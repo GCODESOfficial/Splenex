@@ -7,9 +7,10 @@ import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Search } from "lucide-react"
+import { ChevronDown, Search } from "lucide-react"
 import { useWallet } from "@/hooks/use-wallet"
 import { useLiFi } from "@/hooks/use-lifi"
+import { TokenIcon } from "./TokenIcon"
 
 interface Token {
   symbol: string
@@ -23,6 +24,7 @@ interface Token {
   logoURI?: string
   decimals?: number
 }
+
 
 interface Chain {
   id: number
@@ -151,11 +153,18 @@ const CHAINS: Chain[] = [
     name: "Linea",
     icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/linea/info/logo.png",
   },
-  {
-    id: 5000,
-    name: "Mantle",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/mantle/info/logo.png",
-  },
+  
+{
+  id: 99998,
+  name: "Solana",
+  icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/info/logo.png",
+},
+{
+  id: 99999,
+  name: "Cosmos",
+  icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/cosmos/info/logo.png",
+},
+
 ]
 
 const POPULAR_TOKENS: Token[] = [
@@ -282,6 +291,8 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
   const [selectedChain, setSelectedChain] = useState<number | null>(null)
   const [lifiTokens, setLifiTokens] = useState<Token[]>([])
   const [isLoadingTokens, setIsLoadingTokens] = useState(false)
+  const [showChains, setShowChains] = useState(false);
+
 
   const { tokenBalances } = useWallet()
   const { getSupportedTokens, getSupportedChains } = useLiFi()
@@ -374,25 +385,13 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
       )
     }
 
-    return (
-      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-        <span className="text-white text-xs font-bold">
-          {token.symbol === "ETH"
-            ? "Ξ"
-            : token.symbol === "BNB"
-              ? "B"
-              : token.symbol === "MATIC"
-                ? "M"
-                : token.symbol.charAt(0)}
-        </span>
-      </div>
-    )
+    
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl h-11/12 rounded-none bg-black border-none p-0">
-        <div className="flex gap-14 w-full h-full overflow-y-auto">
+        <div className="hidden md:flex gap-14 w-full h-full overflow-y-auto">
           {/* Left Sidebar - Chains */}
           <div className="w-64 border-2 border-yellow-400 p-4 overflow-y-auto">
             <div className="mb-4">
@@ -517,38 +516,279 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
 
             <div className="space-y-2 max-h-[400px]">
               {filteredTokens.map((token, index) => (
-                <div
-                  key={`${token.symbol}-${token.chainId}-${index}`}
-                  className="flex items-center justify-between p-3 hover:bg-gray-900 rounded-lg cursor-pointer border border-transparent hover:border-gray-700"
-                  onClick={() => handleTokenSelect(token)}
-                >
-                  <div className="flex items-center space-x-3">
-                    {getTokenIcon(token)}
-                    <div className=" w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">
-                        {token.symbol === "ETH" ? "Ξ" : token.symbol.charAt(0)}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="text-white font-medium">{token.symbol}</div>
-                      <div className="text-gray-400 text-sm">
-                        {token.chainName} • {token.address.slice(0, 6)}...{token.address.slice(-4)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-white font-medium">{token.usdValue || "$0.00"}</div>
-                    <div className="text-gray-400 text-sm">{token.balance || "0"}</div>
-                  </div>
-                </div>
-              ))}
+  <div
+    key={`${token.symbol}-${token.chainId}-${index}`}
+    className="flex items-center justify-between p-3 hover:bg-gray-900 rounded-lg cursor-pointer border border-transparent hover:border-gray-700"
+    onClick={() => handleTokenSelect(token)}
+  >
+    <div className="flex items-center space-x-3">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center relative">
+       <span className="flex items-center relative w-5 h-5">
+  <img
+    src={
+      token.chainName?.toLowerCase().includes("solana")
+        ? `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/assets/${token.address}/logo.png`
+        : token.chainName?.toLowerCase().includes("cosmos")
+        ? `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/cosmos/assets/${token.address}/logo.png`
+        : token.address === "0x0000000000000000000000000000000000000000"
+        ? CHAINS.find((c) => c.id === token.chainId)?.icon
+        : `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${(() => {
+            switch (token.chainId) {
+              case 1:
+                return "ethereum"
+              case 56:
+                return "smartchain"
+              case 137:
+                return "polygon"
+              case 42161:
+                return "arbitrum"
+              case 10:
+                return "optimism"
+              case 43114:
+                return "avalanchec"
+              case 8453:
+                return "base"
+              case 324:
+                return "zksync"
+              case 59144:
+                return "linea"
+              default:
+                return "ethereum"
+            }
+          })()}/assets/${token.address}/logo.png`
+    }
+    alt={token.symbol}
+    className="w-full h-full rounded-full"
+    onError={(e) => {
+      // hide if no image found
+      e.currentTarget.style.display = "none";
+    }}
+  />
 
-              {filteredTokens.length === 0 && !isLoadingTokens && (
-                <div className="text-center text-gray-400 py-8">No tokens found matching your search.</div>
-              )}
+  {/* Optional L2 badge for EVM */}
+  {token.chainId && (
+    <>
+      {String(token.chainId) === "137" && (
+        <img
+          src="https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/matic.png"
+          alt="Polygon"
+          className="absolute bottom-[-2px] right-[-2px] w-2.5 h-2.5 rounded-full border border-black"
+        />
+      )}
+      {String(token.chainId) === "42161" && (
+        <img
+          src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/arbitrum/info/logo.png"
+          alt="Arbitrum"
+          className="absolute bottom-[-2px] right-[-2px] w-2.5 h-2.5 rounded-full border border-black"
+        />
+      )}
+      {String(token.chainId) === "56" && (
+        <img
+          src="https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/bnb.png"
+          alt="BSC"
+          className="absolute bottom-[-2px] right-[-2px] w-2.5 h-2.5 rounded-full border border-black"
+        />
+      )}
+      {String(token.chainId) === "8453" && (
+        <img
+          src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/info/logo.png"
+          alt="Base"
+          className="absolute bottom-[-2px] right-[-2px] w-2.5 h-2.5 rounded-full border border-black"
+        />
+      )}
+    </>
+  )}
+</span>
+
+      </div>
+
+      <div>
+        <div className="text-white font-medium">{token.symbol}</div>
+        <div className="text-gray-400 text-sm">
+          {token.chainName} • {token.address.slice(0, 6)}...{token.address.slice(-4)}
+        </div>
+      </div>
+    </div>
+    <div className="text-right">
+      <div className="text-white font-medium">{token.usdValue || "$0.00"}</div>
+      <div className="text-gray-400 text-sm">{token.balance || "0"}</div>
+    </div>
+  </div>
+))}
+
             </div>
           </div>
         </div>
+
+
+
+   {/* --- Mobile Layout --- */}
+<div className="flex flex-col md:hidden h-[90vh] w-full bg-[#0A0A0A]">
+  {/* Header */}
+  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+    <DialogTitle className="text-white text-base font-semibold">
+      Select Token
+    </DialogTitle>
+    <button
+      onClick={onClose}
+      className="text-gray-400 hover:text-white text-lg font-light"
+    >
+      ✕
+    </button>
+  </div>
+
+  {/* Search + Chain selector */}
+  <div className="p-4 border-b border-gray-800">
+    <div className="relative mb-3">
+      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+      <Input
+        placeholder="Search for a token or paste address"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        className="pl-10 bg-[#1A1A1A] border-none text-white rounded-md"
+      />
+    </div>
+
+    {/* Chain dropdown toggle */}
+    <button
+      onClick={() => setShowChains((prev) => !prev)}
+      className="flex items-center justify-between w-full px-3 py-2 bg-[#1A1A1A] rounded-md text-sm text-gray-300"
+    >
+      <div className="flex items-center gap-2">
+        <img
+          src={
+            selectedChain
+              ? CHAINS.find((c) => c.id === selectedChain)?.icon
+              : "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
+          }
+          alt="chain"
+          className="w-4 h-4"
+        />
+        <span>
+          {selectedChain
+            ? CHAINS.find((c) => c.id === selectedChain)?.name
+            : "All Chains"}
+        </span>
+      </div>
+      <ChevronDown
+        className={`h-4 w-4 text-gray-400 transition-transform ${
+          showChains ? "rotate-180" : "rotate-0"
+        }`}
+      />
+    </button>
+
+    {/* Chain dropdown list */}
+    {showChains && (
+      <div className="mt-3 max-h-[220px] overflow-y-auto bg-[#111111] rounded-md border border-gray-800">
+        <button
+          onClick={() => {
+            setSelectedChain(null);
+            setShowChains(false);
+          }}
+          className={`flex items-center w-full px-4 py-2 text-sm ${
+            selectedChain === null
+              ? "bg-yellow-400 text-black"
+              : "text-gray-200 hover:bg-[#1E1E1E]"
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-gray-500 rounded-full flex items-center justify-center text-xs">
+              🌐
+            </div>
+            All Chains
+          </span>
+        </button>
+
+        {filteredChains.map((chain) => (
+          <button
+            key={chain.id}
+            onClick={() => {
+              setSelectedChain(chain.id);
+              setShowChains(false);
+            }}
+            className={`flex items-center w-full px-4 py-2 text-sm ${
+              selectedChain === chain.id
+                ? "bg-yellow-400 text-black"
+                : "text-gray-200 hover:bg-[#1E1E1E]"
+            }`}
+          >
+            <img
+              src={chain.icon}
+              alt={chain.name}
+              className="w-4 h-4 mr-2 rounded-full"
+            />
+            {chain.name}
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+
+  {/* Tokens list */}
+  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+    <div className="text-gray-400 text-sm mb-2">
+      {selectedChain
+        ? `${CHAINS.find((c) => c.id === selectedChain)?.name} Tokens`
+        : "Your Tokens"}
+    </div>
+
+    {filteredTokens.map((token, index) => (
+      <div
+        key={`${token.symbol}-${index}`}
+        className="flex items-center justify-between p-3 hover:bg-[#141414] rounded-lg cursor-pointer"
+        onClick={() => handleTokenSelect(token)}
+      >
+        <div className="flex items-center space-x-3">
+          {/* Token icon */}
+          <div className="relative w-8 h-8 flex items-center justify-center">
+            <img
+               src={
+    "logoURI" in token && token.logoURI
+      ? token.logoURI
+      : CHAINS.find((c) => c.id === token.chainId)?.icon ||
+        "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
+  }
+              alt={token.symbol}
+              className="w-full h-full rounded-full"
+            />
+            {token.chainId && (
+              <img
+                src={
+                  CHAINS.find((c) => c.id === token.chainId)?.icon ||
+                  "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
+                }
+                alt={token.chainName}
+                className="absolute bottom-[-2px] right-[-2px] w-3 h-3 rounded-full border border-black"
+              />
+            )}
+          </div>
+
+          {/* Token Info */}
+          <div>
+            <div className="text-white font-medium text-sm">{token.symbol}</div>
+            <div className="text-gray-500 text-xs">
+              {token.chainName} {token.address && "·"}{" "}
+              {token.address
+                ? `${token.address.slice(0, 6)}...${token.address.slice(-4)}`
+                : ""}
+            </div>
+          </div>
+        </div>
+
+        {/* Value */}
+        <div className="text-right">
+          <div className="text-white text-sm font-semibold">
+            {token.usdValue || "$0.00"}
+          </div>
+          <div className="text-gray-500 text-xs">
+            {token.balance || "0.0000"}
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
+
       </DialogContent>
     </Dialog>
   )

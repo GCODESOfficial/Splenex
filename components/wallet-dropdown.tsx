@@ -34,7 +34,7 @@ export function WalletDropdown() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="bg-[#121212] p-2 text-white">
+        <button className="md:bg-[#121212] md:p-2 px-1 md:px-2 text-white">
           <div className="flex items-center gap-2">
             <span className="hidden sm:inline">{address ? formatAddress(address) : "Wallet"}</span>
             <ChevronDown className="h-4 w-4" />
@@ -42,7 +42,7 @@ export function WalletDropdown() {
         </button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-64 mx-auto bg-[#121212] border border-[#FCD404] rounded-none">
+      <DropdownMenuContent align="end" className="w-64 mx-auto  bg-[#121212] border border-[#FCD404] rounded-none">
         <div className="p-3 border-b border-gray-700">
           <div className="flex items-center gap-2 mb-2">
             <User className="h-4 w-4 text-gray-400" />

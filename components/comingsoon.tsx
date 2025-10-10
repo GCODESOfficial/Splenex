@@ -1,13 +1,34 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* app/comingsoon.tsx */
 "use client";
 
 import Image from "next/image";
+import { useEffect, useState } from "react"
+import { getChains } from "@lifi/sdk"
 
 export default function ComingSoon() {
+ const [chains, setChains] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchChains() {
+      try {
+        const supportedChains = await getChains()
+        setChains(supportedChains)
+      } catch (error) {
+        console.error("Failed to fetch chains:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchChains()
+  }, [])
+
+
   return (
-    <section className="flex items-center justify-center min-h-screen mt-24">
+    <section className="flex items-center justify-center min-h-screen mt-4 md:mt-14">
       {/* Card */}
-      <div className="relative bg-[#191919] text-white w-[320px] md:w-[400px] border border-[#FFD600]">
+      <div className="relative bg-[#1c1e1d] text-white w-11/12 md:w-[400px] border border-[#FFD600]">
         {/* Top yellow bar */}
         <div className="absolute -top-4 left-0 right-0 h-4 bg-[#FFD600]" />
 
@@ -15,22 +36,17 @@ export default function ComingSoon() {
         <div className="flex flex-col items-center justify-center py-26 px-6 text-center space-y-4">
           {/* Hourglass Icon */}
           <div className="mb-6">
-  <Image
-    src="/images/hourglass.svg" // <-- replace with your actual image path
-    alt="Hourglass Icon"
-    width={50}
-    height={50}
-    className="mx-auto"
-  />
-</div>
-
+            <video autoPlay loop muted className="w-50 h-50">
+              <source src="/ComingSoonAnimation.mp4" type="video/mp4" />
+            </video>
+          </div>
 
           {/* Title */}
           <h2 className="text-2xl font-semibold">Coming Soon</h2>
 
           {/* Subtitle */}
           <p className=" text-[#B1B1B1]">
-            Non-custodial strategies with <br/> transparent metrics.
+            Non-custodial strategies with <br /> transparent metrics.
           </p>
         </div>
 
@@ -40,33 +56,33 @@ export default function ComingSoon() {
         {/* Bottom section */}
         <div className="flex items-center justify-between text-xs md:text-sm px-4 py-3 bg-[#191919]">
           {/* Price */}
-         <div className="flex items-center gap-1 font-medium text-white text-xl">
-  <Image
-    src="/images/token-icon.svg" // <-- replace with your actual image path
-    alt="Token Icon"
-    width={20}
-    height={20}
-    className="w-6 h-6 rounded-full"
-  />
-  $0.0571
-</div>
+          <div className="flex items-center gap-1 font-medium text-white text-xl">
+            <Image
+              src="/images/token-icon.svg" // <-- replace with your actual image path
+              alt="Token Icon"
+              width={20}
+              height={20}
+              className="w-6 h-6 rounded-full"
+            />
+            $---,---
+          </div>
 
           {/* MarketCap */}
           <div className="text-[#8F8F8F]">
             MarketCap <br />
-            <span className="text-[#FFD262] font-semibold">$1,303,567.09</span>
+            <span className="text-[#FFD262] font-semibold">---,---</span>
           </div>
 
           {/* Holders */}
           <div className="text-[#8F8F8F]">
             Holders <br />
-            <span className="text-white font-semibold">800</span>
+            <span className="text-white font-semibold">---,---</span>
           </div>
 
           {/* Networks */}
           <div className="text-[#8F8F8F]">
             Networks <br />
-            <span className="text-white font-semibold">95+</span>
+            <span className="text-white font-semibold">{!loading ? `${chains.length}+` : "--"}</span>
           </div>
         </div>
 

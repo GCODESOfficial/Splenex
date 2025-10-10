@@ -5,7 +5,7 @@ import { Clock, TrendingUp, Zap } from "lucide-react"
 
 export function ComingSoonInterface() {
   return (
-    <div className="flex flex-col items-center justify-center py-12 space-y-6">
+    <div className="flex flex-col items-center justify-center py-10 space-y-6">
       {/* Icon */}
       <div className="w-16 h-16 bg-yellow-400 rounded-full flex items-center justify-center">
         <TrendingUp className="h-8 w-8 text-black" />

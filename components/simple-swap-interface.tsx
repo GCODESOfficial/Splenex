@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
@@ -21,6 +22,10 @@ import {
   type ApeModeConfig,
 } from "./apemode-activation-modal";
 import { ApeModeSwapInterface } from "./apemode-swap-interface";
+import { Dialog, DialogContent, DialogTitle } from "@radix-ui/react-dialog";
+import { DialogHeader } from "./ui/dialog";
+import { useToast } from "@/components/ui/use-toast"
+
 
 interface Token {
   symbol: string;
@@ -90,6 +95,9 @@ export function SimpleSwapInterface() {
   // original modal flag
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
 
+  const { toast } = useToast()
+
+
   // new docked inline chart flag
   const [isChartDocked, setIsChartDocked] = useState(false);
 
@@ -100,6 +108,13 @@ export function SimpleSwapInterface() {
   const [apeModeConfig, setApeModeConfig] = useState<ApeModeConfig | null>(
     null
   );
+
+  // For Paste Wallet modal
+  const [isPasteWalletModalOpen, setIsPasteWalletModalOpen] = useState(false);
+  const [walletPasteType, setWalletPasteType] = useState<"from" | "to" | null>(
+    null
+  );
+  const [pastedWalletInput, setPastedWalletInput] = useState("");
 
   useEffect(() => {
     if (isConnected && address) {
@@ -143,7 +158,7 @@ export function SimpleSwapInterface() {
       USDC: 5,
       USDT: 5,
       DAI: 5,
-      BNB: 0.01,
+      BNB: 0.001,
       MATIC: 5,
     };
 
@@ -166,12 +181,24 @@ export function SimpleSwapInterface() {
 
     const validation = validateSwapAmount(fromAmount, fromToken);
     if (!validation.isValid) {
-      alert(validation.error);
+      toast({
+  title: "Invalid Amount",
+  description: validation.error,
+  variant: "destructive",
+  duration: 4000,
+})
+
       return;
     }
 
     if (!fromWalletAddress || !toWalletAddress) {
-      alert("Please ensure both wallets are connected");
+      toast({
+  title: "Wallet Connection Error",
+  description: "Please ensure both wallets are connected before swapping.",
+  variant: "destructive",
+  duration: 4000,
+})
+
       return;
     }
 
@@ -283,9 +310,13 @@ export function SimpleSwapInterface() {
 
         const txHash = await executeSwap(lifiQuote, signer);
         if (txHash) {
-          alert(
-            `${isBridge ? "Bridge" : "Swap"} successful! Transaction: ${txHash}`
-          );
+          toast({
+  title: `${isBridge ? "Bridge" : "Swap"} Successful`,
+  description: `Transaction submitted successfully: ${txHash}`,
+  variant: "default",
+  duration: 5000,
+})
+
 
           setFromAmount("");
           setToAmount("");
@@ -304,15 +335,34 @@ export function SimpleSwapInterface() {
   };
 
   const handlePasteWallet = (type: "from" | "to") => {
-    const walletAddress = prompt("Enter wallet address:");
-    if (walletAddress && walletAddress.startsWith("0x")) {
-      if (type === "from") {
-        setFromWalletAddress(walletAddress);
-      } else {
-        setToWalletAddress(walletAddress);
-      }
-      console.log(`[v0] Pasted wallet address for ${type}:`, walletAddress);
+    setWalletPasteType(type);
+    setPastedWalletInput("");
+    setIsPasteWalletModalOpen(true);
+  };
+
+  const confirmPasteWallet = () => {
+    if (!pastedWalletInput) return;
+    if (
+      !pastedWalletInput.startsWith("0x") ||
+      pastedWalletInput.length !== 42
+    ) {
+      toast({
+  title: "Invalid Address",
+  description: "Please enter a valid 0x wallet address.",
+  variant: "destructive",
+  duration: 4000,
+})
+
+      return;
     }
+
+    if (walletPasteType === "from") {
+      setFromWalletAddress(pastedWalletInput);
+    } else if (walletPasteType === "to") {
+      setToWalletAddress(pastedWalletInput);
+    }
+
+    setIsPasteWalletModalOpen(false);
   };
 
   const formatAddress = (addr: string) => {
@@ -343,16 +393,20 @@ export function SimpleSwapInterface() {
           USDC: 5,
           USDT: 5,
           DAI: 5,
-          BNB: 0.01,
+          BNB: 0.001,
           MATIC: 5,
         };
         const minAmount = minimumAmounts[fromToken.symbol] || 1;
         if (balanceNum >= minAmount) {
           setFromAmount(minAmount.toString());
         } else {
-          alert(
-            `Insufficient balance for minimum swap amount of ${minAmount} ${fromToken.symbol}`
-          );
+          toast({
+  title: "Insufficient Balance",
+  description: `Minimum swap amount required: ${minAmount} ${fromToken.symbol}`,
+  variant: "destructive",
+  duration: 4000,
+})
+
         }
       }
     }
@@ -370,12 +424,24 @@ export function SimpleSwapInterface() {
       };
 
       setLimitOrders((prev) => [...prev, newOrder]);
-      alert(`Limit order placed successfully! Order ID: ${newOrder.id}`);
+      toast({
+  title: "Limit Order Placed",
+  description: `Order ID: ${newOrder.id}`,
+  variant: "default",
+  duration: 4000,
+})
+
 
       setFromAmount("");
     } catch (error) {
       console.error("[v0] Limit order error:", error);
-      alert("Failed to place limit order. Please try again.");
+      toast({
+  title: "Limit Order Failed",
+  description: "Unable to place limit order. Please try again.",
+  variant: "destructive",
+  duration: 4000,
+})
+
     }
   };
 
@@ -459,7 +525,7 @@ export function SimpleSwapInterface() {
   };
 
   const isBridge = fromToken.chainId !== toToken.chainId;
-  const buttonText = !isConnected ? "Connect" : isBridge ? "Bridge" : "Swap";
+  const buttonText = !isConnected ? "Connect" : isBridge ? "Swap" : "Swap";
 
   useEffect(() => {
     const fetchQuote = async () => {
@@ -621,14 +687,62 @@ export function SimpleSwapInterface() {
                         onChange={(e) => setFromAmount(e.target.value)}
                         className="bg-transparent border-none text-3xl font-semibold text-white p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
+
                       <Button
                         variant="ghost"
                         onClick={() => setIsFromTokenModalOpen(true)}
                         className="bg-[#191919] text-white px-3 py-1 h-14 rounded-none border border-[#242424]"
                       >
-                        <div className="w-5 h-5 bg-blue-500 rounded-full mr-2 flex items-center justify-center">
-                          <span className="text-white text-xs font-bold">
-                            Ξ
+                        <div className="w-5 h-5 rounded-full mr-2 flex items-center justify-center">
+                          <span className="flex items-center gap-1">
+                            <img
+                              src={
+                                fromToken.chainName
+                                  ?.toLowerCase()
+                                  .includes("solana")
+                                  ? `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/assets/${fromToken.address}/logo.png`
+                                  : fromToken.chainName
+                                      ?.toLowerCase()
+                                      .includes("cosmos")
+                                  ? `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/cosmos/assets/${fromToken.address}/logo.png`
+                                  : fromToken.address ===
+                                    "0x0000000000000000000000000000000000000000"
+                                  ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
+                                  : `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${(() => {
+                                      switch (fromToken.chainId) {
+                                        case 1:
+                                          return "ethereum";
+                                        case 56:
+                                          return "smartchain";
+                                        case 137:
+                                          return "polygon";
+                                        case 42161:
+                                          return "arbitrum";
+                                        case 10:
+                                          return "optimism";
+                                        case 43114:
+                                          return "avalanchec";
+                                        case 8453:
+                                          return "base";
+                                        case 324:
+                                          return "zksync";
+                                        case 59144:
+                                          return "linea";
+                                        case 99998:
+                                          return "solana";
+                                        case 99999:
+                                          return "cosmos";
+                                        default:
+                                          return "ethereum";
+                                      }
+                                    })()}/assets/${fromToken.address}/logo.png`
+                              }
+                              alt={fromToken.symbol}
+                              className="w-full h-full rounded-full"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                              }}
+                            />
                           </span>
                         </div>
                         {fromToken.symbol}
@@ -720,17 +834,23 @@ export function SimpleSwapInterface() {
                       >
                         {toToken && toToken.symbol !== "Select Token" ? (
                           <>
-                            <div className="w-5 h-5 bg-blue-500 rounded-full mr-2 flex items-center justify-center">
-                              <span className="text-white text-xs font-bold">
-                                {toToken.symbol === "ETH"
-                                  ? "Ξ"
-                                  : toToken.symbol === "BNB"
-                                  ? "B"
-                                  : toToken.symbol === "MATIC"
-                                  ? "M"
-                                  : toToken.symbol === "USDC"
-                                  ? "$"
-                                  : toToken.symbol.charAt(0)}
+                            <div className="w-5 h-5 rounded-full mr-2 flex items-center justify-center">
+                              <span className="flex items-center">
+                                <img
+                                  src={
+                                    toToken.symbol === "ETH"
+                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
+                                      : toToken.symbol === "BNB"
+                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/bnb.png"
+                                      : toToken.symbol === "MATIC"
+                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/matic.png"
+                                      : toToken.symbol === "USDC"
+                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/usdc.png"
+                                      : "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/generic.png"
+                                  }
+                                  alt={toToken.symbol}
+                                  className="w-full h-full rounded-full"
+                                />
                               </span>
                             </div>
                             {toToken.symbol}
@@ -783,8 +903,57 @@ export function SimpleSwapInterface() {
                         onClick={() => setIsFromTokenModalOpen(true)}
                         className="bg-[#191919] text-white px-3 py-1 h-14 rounded-none border border-[#242424]"
                       >
-                        <div className="w-5 h-5 bg-blue-500 rounded-full mr-2 flex items-center justify-center">
-                          <span className="text-white text-xs font-bold">Ξ</span>
+                        <div className="w-5 h-5 rounded-full mr-2 flex items-center justify-center">
+                          <span className="flex items-center gap-1">
+                            <img
+                              src={
+                                fromToken.chainName
+                                  ?.toLowerCase()
+                                  .includes("solana")
+                                  ? `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/assets/${fromToken.address}/logo.png`
+                                  : fromToken.chainName
+                                      ?.toLowerCase()
+                                      .includes("cosmos")
+                                  ? `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/cosmos/assets/${fromToken.address}/logo.png`
+                                  : fromToken.address ===
+                                    "0x0000000000000000000000000000000000000000"
+                                  ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
+                                  : `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${(() => {
+                                      switch (fromToken.chainId) {
+                                        case 1:
+                                          return "ethereum";
+                                        case 56:
+                                          return "smartchain";
+                                        case 137:
+                                          return "polygon";
+                                        case 42161:
+                                          return "arbitrum";
+                                        case 10:
+                                          return "optimism";
+                                        case 43114:
+                                          return "avalanchec";
+                                        case 8453:
+                                          return "base";
+                                        case 324:
+                                          return "zksync";
+                                        case 59144:
+                                          return "linea";
+                                        case 99998:
+                                          return "solana";
+                                        case 99999:
+                                          return "cosmos";
+                                        default:
+                                          return "ethereum";
+                                      }
+                                    })()}/assets/${fromToken.address}/logo.png`
+                              }
+                              alt={fromToken.symbol}
+                              className="w-full h-full rounded-full"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                              }}
+                            />
+                          </span>
                         </div>
                         {fromToken.symbol}
                         <ChevronDown className="ml-1 h-3 w-3" />
@@ -879,17 +1048,23 @@ export function SimpleSwapInterface() {
                       >
                         {toToken && toToken.symbol !== "Select Token" ? (
                           <>
-                            <div className="w-5 h-5 bg-blue-500 rounded-full mr-2 flex items-center justify-center">
-                              <span className="text-white text-xs font-bold">
-                                {toToken.symbol === "ETH"
-                                  ? "Ξ"
-                                  : toToken.symbol === "BNB"
-                                  ? "B"
-                                  : toToken.symbol === "MATIC"
-                                  ? "M"
-                                  : toToken.symbol === "USDC"
-                                  ? "$"
-                                  : toToken.symbol.charAt(0)}
+                            <div className="w-5 h-5 rounded-full mr-2 flex items-center justify-center">
+                              <span className="flex items-center">
+                                <img
+                                  src={
+                                    toToken.symbol === "ETH"
+                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
+                                      : toToken.symbol === "BNB"
+                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/bnb.png"
+                                      : toToken.symbol === "MATIC"
+                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/matic.png"
+                                      : toToken.symbol === "USDC"
+                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/usdc.png"
+                                      : "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/generic.png"
+                                  }
+                                  alt={toToken.symbol}
+                                  className="w-full h-full rounded-full"
+                                />
                               </span>
                             </div>
                             {toToken.symbol}
@@ -928,6 +1103,74 @@ export function SimpleSwapInterface() {
                       )}
                     </div>
                   </div>
+
+                  {/* Paste Wallet Modal */}
+                  <Dialog
+                    open={isPasteWalletModalOpen}
+                    onOpenChange={setIsPasteWalletModalOpen}
+                  >
+                    {/* Paste Wallet Modal */}
+                    {isPasteWalletModalOpen && (
+                      <div className="fixed inset-0 z-[9990] flex items-center justify-center">
+                        {/* Backdrop (only visible when modal is open) */}
+                        <div
+                          className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity duration-300"
+                          onClick={() => setIsPasteWalletModalOpen(false)}
+                        ></div>
+
+                        {/* Modal content */}
+                        <div
+                          className="
+        relative z-[9999]
+        bg-[#121212] border border-[#FCD404] text-white
+        rounded-none w-full max-w-md shadow-2xl
+        p-6 animate-in fade-in-50 slide-in-from-bottom-2
+      "
+                        >
+                          <DialogHeader>
+                            <DialogTitle className="text-lg font-semibold text-yellow-400 text-center">
+                              Paste Wallet Address
+                            </DialogTitle>
+                          </DialogHeader>
+
+                          <div className="space-y-4 mt-4">
+                            <p className="text-gray-400 text-sm text-center">
+                              Enter the wallet address for the{" "}
+                              <span className="text-yellow-400 font-semibold">
+                                {walletPasteType}
+                              </span>{" "}
+                              wallet:
+                            </p>
+
+                            <Input
+                              value={pastedWalletInput}
+                              onChange={(e) =>
+                                setPastedWalletInput(e.target.value)
+                              }
+                              placeholder="0x..."
+                              className="bg-[#191919] border border-[#2A2A2A] text-white placeholder-gray-500 rounded-none w-full"
+                            />
+
+                            <div className="flex justify-end space-x-2 mt-6">
+                              <Button
+                                variant="ghost"
+                                onClick={() => setIsPasteWalletModalOpen(false)}
+                                className="text-gray-400 border border-gray-600 rounded-none px-6"
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                onClick={confirmPasteWallet}
+                                className="bg-gradient-to-r from-[#F3DA5F] to-[#FCD404] text-black font-semibold rounded-none px-6"
+                              >
+                                Confirm
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </Dialog>
                 </div>
 
                 <Button
@@ -944,8 +1187,8 @@ export function SimpleSwapInterface() {
 
                 {!isConnected && (
                   <p className="text-center text-gray-400 text-sm leading-relaxed">
-                    Trade crypto effortlessly across Ethereum and 12+
-                    other networks, all in one place.
+                    Trade crypto effortlessly across Ethereum and 12+ other
+                    networks, all in one place.
                   </p>
                 )}
 
@@ -1064,7 +1307,6 @@ export function SimpleSwapInterface() {
           throw new Error("Function not implemented.");
         }}
       />
-
 
       <SlippageSettingsModal
         isOpen={isSlippageModalOpen}

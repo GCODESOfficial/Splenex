@@ -248,7 +248,7 @@ export function WalletModal({
         if (ok) {
           try {
             // pass provider override to ensure same instance is used
-            await connect(wallet.id, wallet.provider)
+            await connect(wallet.id)
           } catch (e) {
             console.warn("[WalletModal] connect(wallet.id) failed after provider connect:", e)
           }
@@ -257,8 +257,8 @@ export function WalletModal({
           return
         }
 
-        // fallback to connect with provider override
-        await connect(wallet.id, wallet.provider)
+        // fallback to connect by wallet id
+        await connect(wallet.id)
         if (swapWalletType) setJustConnectedSwapWallet(true)
         return
       } catch (err) {

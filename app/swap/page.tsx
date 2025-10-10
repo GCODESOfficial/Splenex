@@ -11,7 +11,7 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<"swap" | "forex">("swap")
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="md:min-h-screen bg-black">
 
       <SimpleSwapInterface />
 

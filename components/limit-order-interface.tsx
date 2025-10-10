@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
@@ -108,10 +109,21 @@ export function LimitOrderInterface({
         <div className="bg-[#1F1F1F] border border-[#2C2C2C] p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center space-x-2">
-              <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-xs font-bold">
-                  {fromToken.symbol === "ETH" ? "Ξ" : fromToken.symbol.charAt(0)}
-                </span>
+              <div className="w-5 h-5 rounded-full flex items-center justify-center">
+               <span className="flex items-center">
+  {fromToken.symbol === "ETH" ? (
+    <img
+      src="https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
+      alt="ETH"
+      className="w-full h-full rounded-full"
+    />
+  ) : (
+    <span className="text-white text-xs font-bold">
+      {fromToken.symbol.charAt(0)}
+    </span>
+  )}
+</span>
+
               </div>
               <span className="text-white font-medium">{fromToken.symbol}</span>
             </div>

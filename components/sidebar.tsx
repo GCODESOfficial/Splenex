@@ -30,11 +30,16 @@ const menuItems: MenuItem[] = [
   { name: "sNFT", href: "/snft", icon: "/images/icons/nft.svg" },
 ];
 
-export default function Sidebar() {
+export default function Sidebar( {
+  mobileOpen = false,
+  onClose,
+}: {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
 
-  // Load collapse state from localStorage on first render
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed");
     if (saved) {
@@ -42,14 +47,14 @@ export default function Sidebar() {
     }
   }, []);
 
-  // Save collapse state when it changes
   useEffect(() => {
     localStorage.setItem("sidebar-collapsed", JSON.stringify(collapsed));
   }, [collapsed]);
 
   return (
+    <>
     <div
-      className={`bg-gradient-to-r from-[#0B0B0C] to-[#131313] text-white flex flex-col pb-16 z-20 ${
+      className={`bg-gradient-to-r from-[#0B0B0C] to-[#131313] text-white hidden md:flex flex-col pb-16 z-50 ${
         collapsed ? "w-20 " : "w-52 "
       } transition-all duration-300`}
     >
@@ -133,6 +138,54 @@ export default function Sidebar() {
           );
         })}
       </nav>
-    </div>
+      </div>
+
+      {/* === Mobile Sidebar Added === */}
+      <div
+        className={`fixed top-0 right-0 h-full w-64 bg-gradient-to-r from-[#0B0B0C] to-[#131313] text-white transform transition-transform duration-300 z-50 md:hidden ${
+          mobileOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="flex justify-between items-center p-4">
+          <Image src="/images/logo.svg" alt="logo" width={100} height={24} />
+          <button onClick={onClose} className="text-[#FCD404] text-2xl">
+            ✕
+          </button>
+        </div>
+
+        <nav className="flex flex-col mt-4">
+          {menuItems.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                onClick={onClose}
+                className={`flex items-center px-5 py-4 transition-colors border-t-[#B79B08] border-t ${
+                  isActive ? "bg-yellow-400 text-black" : "text-[#C7C7C7]"
+                }`}
+              >
+                <Image
+                  src={item.icon}
+                  alt={item.name}
+                  width={18}
+                  height={18}
+                  className={`mr-3 ${isActive ? "brightness-0" : "brightness-100"}`}
+                />
+                <span>{item.name}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+          onClick={onClose}
+        ></div>
+      )}
+    </>
+    
   );
 }
