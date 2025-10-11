@@ -35,6 +35,11 @@ export async function getLiFiQuote(request: LiFiQuoteRequest) {
       throw new Error("Invalid amount: must be greater than 0")
     }
 
+    // Log for debugging
+    console.log("[v0] Server: Slippage before conversion:", request.slippage);
+    const slippageDecimal = request.slippage ? (request.slippage / 100).toString() : "0.005";
+    console.log("[v0] Server: Slippage sent to LiFi:", slippageDecimal);
+
     const params = new URLSearchParams({
       fromChain: request.fromChain.toString(),
       toChain: request.toChain.toString(),
@@ -43,7 +48,7 @@ export async function getLiFiQuote(request: LiFiQuoteRequest) {
       fromAmount: request.fromAmount,
       fromAddress: request.fromAddress,
       ...(request.toAddress && { toAddress: request.toAddress }),
-      ...(request.slippage && { slippage: (request.slippage / 100).toString() }),
+      slippage: slippageDecimal,
       ...(request.order && { order: request.order }),
       ...(request.allowBridges && { allowBridges: request.allowBridges.join(",") }),
       ...(request.denyBridges && { denyBridges: request.denyBridges.join(",") }),
@@ -52,6 +57,8 @@ export async function getLiFiQuote(request: LiFiQuoteRequest) {
       ...(request.denyExchanges && { denyExchanges: request.denyExchanges.join(",") }),
       ...(request.preferExchanges && { preferExchanges: request.preferExchanges.join(",") }),
     })
+    
+    console.log("[v0] Server: Full LiFi API URL:", `${LIFI_API_BASE}/quote?${params.toString()}`)
 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 15000) // Reduced timeout to 15s
@@ -79,7 +86,10 @@ export async function getLiFiQuote(request: LiFiQuoteRequest) {
     }
 
     const quoteData = await response.json()
-    console.log("[v0] Server: LiFi quote received")
+    console.log("[v0] Server: LiFi quote received successfully")
+    console.log("[v0] Server: Quote estimate toAmountMin:", quoteData.estimate?.toAmountMin)
+    console.log("[v0] Server: Quote tool:", quoteData.tool)
+    console.log("[v0] Server: Quote type:", quoteData.type)
     return { success: true, data: quoteData }
   } catch (err) {
     let errorMessage = "Failed to get quote"

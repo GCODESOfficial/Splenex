@@ -24,8 +24,7 @@ import {
 import { ApeModeSwapInterface } from "./apemode-swap-interface";
 import { Dialog, DialogContent, DialogTitle } from "@radix-ui/react-dialog";
 import { DialogHeader } from "./ui/dialog";
-import { useToast } from "@/components/ui/use-toast"
-
+import { useToast } from "@/components/ui/use-toast";
 
 interface Token {
   symbol: string;
@@ -61,7 +60,7 @@ const DEFAULT_TO_TOKEN: Token = {
 };
 
 export function SimpleSwapInterface() {
-  const { address, isConnected, balance, isConnecting, connectingWallet } =
+  const { address, isConnected, balance, isConnecting, connectingWallet, switchNetwork, chainId, refreshBalances } =
     useWallet();
   const {
     getQuote,
@@ -95,8 +94,7 @@ export function SimpleSwapInterface() {
   // original modal flag
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
 
-  const { toast } = useToast()
-
+  const { toast } = useToast();
 
   // new docked inline chart flag
   const [isChartDocked, setIsChartDocked] = useState(false);
@@ -115,6 +113,9 @@ export function SimpleSwapInterface() {
     null
   );
   const [pastedWalletInput, setPastedWalletInput] = useState("");
+  
+  // Swap processing state
+  const [isSwapping, setIsSwapping] = useState(false);
 
   useEffect(() => {
     if (isConnected && address) {
@@ -134,6 +135,48 @@ export function SimpleSwapInterface() {
 
   const handleConnectWallet = () => {
     setIsWalletModalOpen(true);
+  };
+
+  // Helper to get network configuration for adding to wallet
+  const getNetworkConfig = (chainId: number) => {
+    const networks: { [key: number]: any } = {
+      56: {
+        chainId: "0x38",
+        chainName: "BNB Smart Chain",
+        nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+        rpcUrls: ["https://bsc-dataseed.binance.org"],
+        blockExplorerUrls: ["https://bscscan.com"],
+      },
+      8453: {
+        chainId: "0x2105",
+        chainName: "Base",
+        nativeCurrency: { name: "Ethereum", symbol: "ETH", decimals: 18 },
+        rpcUrls: ["https://mainnet.base.org"],
+        blockExplorerUrls: ["https://basescan.org"],
+      },
+      42161: {
+        chainId: "0xa4b1",
+        chainName: "Arbitrum One",
+        nativeCurrency: { name: "Ethereum", symbol: "ETH", decimals: 18 },
+        rpcUrls: ["https://arb1.arbitrum.io/rpc"],
+        blockExplorerUrls: ["https://arbiscan.io"],
+      },
+      137: {
+        chainId: "0x89",
+        chainName: "Polygon",
+        nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
+        rpcUrls: ["https://polygon-rpc.com"],
+        blockExplorerUrls: ["https://polygonscan.com"],
+      },
+      10: {
+        chainId: "0xa",
+        chainName: "Optimism",
+        nativeCurrency: { name: "Ethereum", symbol: "ETH", decimals: 18 },
+        rpcUrls: ["https://mainnet.optimism.io"],
+        blockExplorerUrls: ["https://optimistic.etherscan.io"],
+      },
+    };
+    return networks[chainId];
   };
 
   const validateSwapAmount = (
@@ -156,7 +199,7 @@ export function SimpleSwapInterface() {
     const minimumAmounts: { [key: string]: number } = {
       ETH: 0.001,
       USDC: 5,
-      USDT: 5,
+      USDT: 1,
       DAI: 5,
       BNB: 0.001,
       MATIC: 5,
@@ -179,43 +222,161 @@ export function SimpleSwapInterface() {
       return;
     }
 
+    if (isSwapping) {
+      console.log("[v0] Swap already in progress, ignoring request");
+      return;
+    }
+
     const validation = validateSwapAmount(fromAmount, fromToken);
     if (!validation.isValid) {
       toast({
-  title: "Invalid Amount",
-  description: validation.error,
-  variant: "destructive",
-  duration: 4000,
-})
-
+        title: "Invalid Amount",
+        description: validation.error,
+        variant: "destructive",
+        duration: 4000,
+      });
       return;
     }
 
     if (!fromWalletAddress || !toWalletAddress) {
       toast({
-  title: "Wallet Connection Error",
-  description: "Please ensure both wallets are connected before swapping.",
-  variant: "destructive",
-  duration: 4000,
-})
-
+        title: "Wallet Connection Error",
+        description:
+          "Please ensure both wallets are connected before swapping.",
+        variant: "destructive",
+        duration: 4000,
+      });
       return;
     }
 
+    setIsSwapping(true);
+    
     try {
       console.log("[v0] Initiating swap with LiFi...");
 
-      const fromTokenDecimals =
-        fromToken.decimals || (fromToken.symbol === "USDC" ? 6 : 18);
+      // ✅ Ensure chainIds are numbers first
+      const fromChain = Number(fromToken.chainId);
+      const toChain = Number(toToken.chainId);
+
+      // ✅ Convert chainId to hex format for wallet switching
+      const fromChainHex = `0x${fromChain.toString(16)}`;
+      const currentChainId = chainId ? parseInt(chainId, 16) : null;
+
+      // ✅ SWITCH TO SOURCE CHAIN BEFORE SWAP
+      if (currentChainId !== fromChain) {
+        console.log(`[v0] Switching network from chain ${currentChainId} to ${fromChain} (${fromChainHex})`);
+        
+        toast({
+          title: "Switch Network",
+          description: `Please switch to ${fromToken.chainName} network to complete the swap`,
+          duration: 3000,
+        });
+
+        try {
+          await switchNetwork(fromChainHex);
+          
+          // Wait for network switch to complete
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          
+          console.log(`[v0] Successfully switched to ${fromToken.chainName}`);
+        } catch (switchError: any) {
+          console.error("[v0] Network switch failed:", switchError);
+          
+          // If network doesn't exist in wallet, try to add it
+          if (switchError.code === 4902) {
+            console.log(`[v0] Network not found, attempting to add ${fromToken.chainName}`);
+            
+            const networkConfig = getNetworkConfig(fromChain);
+            if (networkConfig && typeof window !== "undefined" && window.ethereum) {
+              try {
+                await window.ethereum.request({
+                  method: "wallet_addEthereumChain",
+                  params: [networkConfig],
+                });
+                
+                toast({
+                  title: "Network Added",
+                  description: `${fromToken.chainName} has been added to your wallet. Please try swapping again.`,
+                  duration: 4000,
+                });
+                return;
+              } catch (addError) {
+                console.error("[v0] Failed to add network:", addError);
+                toast({
+                  title: "Failed to Add Network",
+                  description: `Please add ${fromToken.chainName} network to your wallet manually`,
+                  variant: "destructive",
+                  duration: 5000,
+                });
+              }
+            } else {
+              toast({
+                title: "Network Not Found",
+                description: `Please add ${fromToken.chainName} network to your wallet manually`,
+                variant: "destructive",
+                duration: 5000,
+              });
+            }
+          } else {
+            toast({
+              title: "Network Switch Failed",
+              description: `Failed to switch to ${fromToken.chainName}. ${switchError.message || "Please switch manually."}`,
+              variant: "destructive",
+              duration: 5000,
+            });
+          }
+          return;
+        }
+      }
+
+      // ✅ fix decimals properly
+      let fromTokenDecimals = fromToken.decimals;
+      
+      // If decimals not set, determine based on token and chain
+      if (!fromTokenDecimals) {
+        if (fromToken.symbol === "USDC") {
+          fromTokenDecimals = 6;
+        } else if (fromToken.symbol === "USDT") {
+          // USDT has different decimals per chain!
+          fromTokenDecimals = [1, 42161, 137].includes(fromChain) ? 6 : 18;
+        } else if (fromToken.symbol === "WBTC") {
+          fromTokenDecimals = 8;
+        } else {
+          fromTokenDecimals = 18;
+        }
+      }
+      
+      console.log(`[v0] Using decimals for ${fromToken.symbol}: ${fromTokenDecimals}`);
+      
       const fromAmountWei = (
         Number.parseFloat(fromAmount) * Math.pow(10, fromTokenDecimals)
-      ).toString();
+      ).toFixed(0); // LiFi expects integer string
+      
+      console.log(`[v0] Amount conversion: ${fromAmount} ${fromToken.symbol} = ${fromAmountWei} wei (using ${fromTokenDecimals} decimals)`);
+
+      // ✅ remap unsupported USDT on Base → USDC
+      if (fromToken.symbol === "USDT" && fromToken.chainId === 8453) {
+        fromToken.address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // Base USDC
+        fromToken.symbol = "USDC";
+      }
+      if (toToken.symbol === "USDT" && toToken.chainId === 8453) {
+        toToken.address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+        toToken.symbol = "USDC";
+      }
+
+      // ✅ normalize token addresses (native tokens use null address)
+      const safeFromToken = ["ETH", "BNB", "MATIC"].includes(fromToken.symbol)
+        ? "0x0000000000000000000000000000000000000000"
+        : fromToken.address;
+      const safeToToken = ["ETH", "BNB", "MATIC"].includes(toToken.symbol)
+        ? "0x0000000000000000000000000000000000000000"
+        : toToken.address;
 
       const quoteRequest = {
-        fromChain: fromToken.chainId,
-        toChain: toToken.chainId,
-        fromToken: fromToken.address,
-        toToken: toToken.address,
+        fromChain,
+        toChain,
+        fromToken: safeFromToken,
+        toToken: safeToToken,
         fromAmount: fromAmountWei,
         fromAddress: fromWalletAddress,
         toAddress: toWalletAddress,
@@ -226,105 +387,428 @@ export function SimpleSwapInterface() {
       console.log("[v0] Quote request:", quoteRequest);
       const lifiQuote = await getQuote(quoteRequest);
 
-      if (lifiQuote) {
-        console.log("[v0] Quote received:", lifiQuote);
+      if (!lifiQuote) {
+        toast({
+          title: "Quote Error",
+          description: "No available route or invalid pair for this swap.",
+          variant: "destructive",
+          duration: 4000,
+        });
+        return;
+      }
 
-        const toTokenDecimals =
-          toToken.decimals || (toToken.symbol === "USDC" ? 6 : 18);
-        const toAmountFormatted = (
-          Number.parseFloat(lifiQuote.estimate.toAmount) /
-          Math.pow(10, toTokenDecimals)
-        ).toFixed(6);
-        setToAmount(toAmountFormatted);
+      console.log("[v0] Quote received:", lifiQuote);
 
-        let signer = null;
-        if (typeof window !== "undefined" && (window as any).ethereum) {
-          const w = (window as any).ethereum;
-          signer = {
-            sendTransaction: async (txRequest: any) => {
-              console.log("[v0] Sending transaction:", txRequest);
+      // ✅ CHECK AND REQUEST TOKEN APPROVAL FOR ERC20 TOKENS
+      const isNativeToken = ["ETH", "BNB", "MATIC"].includes(fromToken.symbol);
+      
+      if (!isNativeToken && lifiQuote.transactionRequest && typeof window !== "undefined" && window.ethereum) {
+        console.log("[v0] Checking token approval for ERC20 token...");
+        
+        // Get the spender address from LiFi quote (the contract that needs approval)
+        const spenderAddress = lifiQuote.transactionRequest.to;
+        console.log(`[v0] Spender address (LiFi contract): ${spenderAddress}`);
+        
+        try {
+          // ERC20 allowance function signature: allowance(owner, spender)
+          const allowanceData = `0xdd62ed3e${fromWalletAddress.slice(2).padStart(64, '0')}${spenderAddress.slice(2).padStart(64, '0')}`;
+          
+          const allowanceResult = await window.ethereum.request({
+            method: "eth_call",
+            params: [
+              {
+                to: fromToken.address,
+                data: allowanceData,
+              },
+              "latest",
+            ],
+          });
 
+          const currentAllowance = allowanceResult && allowanceResult !== "0x" ? parseInt(allowanceResult, 16) : 0;
+          const requiredAmount = parseInt(fromAmountWei);
+          
+          console.log(`[v0] Current allowance: ${currentAllowance}, Required: ${requiredAmount}`);
+
+          if (currentAllowance < requiredAmount) {
+            console.log("[v0] Insufficient allowance, requesting approval...");
+            
+            toast({
+              title: "Approval Required",
+              description: `Please approve ${fromToken.symbol} for swapping`,
+              duration: 4000,
+            });
+
+            // ERC20 approve function - approve max amount for better UX
+            const maxApproval = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+            const approveData = `0x095ea7b3${spenderAddress.slice(2).padStart(64, '0')}${maxApproval.slice(2)}`;
+
+            const approveTxHash = await window.ethereum.request({
+              method: "eth_sendTransaction",
+              params: [
+                {
+                  from: fromWalletAddress,
+                  to: fromToken.address,
+                  data: approveData,
+                  value: "0x0",
+                },
+              ],
+            });
+
+            console.log("[v0] Approval transaction sent:", approveTxHash);
+            
+            toast({
+              title: "Approval Pending",
+              description: "Waiting for approval transaction to confirm...",
+              duration: 5000,
+            });
+
+            // Wait for approval transaction to be mined
+            let approvalReceipt = null;
+            let attempts = 0;
+            while (!approvalReceipt && attempts < 60) {
+              await new Promise((resolve) => setTimeout(resolve, 2000));
               try {
-                const txHash = await w.request({
-                  method: "eth_sendTransaction",
-                  params: [
-                    {
-                      from: fromWalletAddress,
-                      to: txRequest.to,
-                      data: txRequest.data,
-                      value: txRequest.value,
-                      gas: txRequest.gasLimit,
-                      ...(txRequest.gasPrice && {
-                        gasPrice: txRequest.gasPrice,
-                      }),
-                    },
-                  ],
+                approvalReceipt = await window.ethereum.request({
+                  method: "eth_getTransactionReceipt",
+                  params: [approveTxHash],
                 });
-
-                return {
-                  hash: txHash,
-                  wait: async () => {
-                    console.log(
-                      "[v0] Transaction sent, waiting for confirmation..."
-                    );
-                    let receipt = null;
-                    let attempts = 0;
-                    const maxAttempts = 60;
-
-                    while (!receipt && attempts < maxAttempts) {
-                      try {
-                        receipt = await w.request({
-                          method: "eth_getTransactionReceipt",
-                          params: [txHash],
-                        });
-                        if (!receipt) {
-                          await new Promise((resolve) =>
-                            setTimeout(resolve, 5000)
-                          );
-                          attempts++;
-                        }
-                      } catch (error) {
-                        console.log(
-                          "[v0] Waiting for transaction confirmation..."
-                        );
-                        await new Promise((resolve) =>
-                          setTimeout(resolve, 5000)
-                        );
-                        attempts++;
-                      }
-                    }
-
-                    return {
-                      transactionHash: txHash,
-                      status: (receipt as any)?.status || 1,
-                    };
-                  },
-                };
+                attempts++;
               } catch (error) {
-                console.error("[v0] Transaction failed:", error);
-                throw error;
+                console.log("[v0] Waiting for approval confirmation...");
+                attempts++;
               }
-            },
-          };
-        }
+            }
 
-        const txHash = await executeSwap(lifiQuote, signer);
-        if (txHash) {
-          toast({
-  title: `${isBridge ? "Bridge" : "Swap"} Successful`,
-  description: `Transaction submitted successfully: ${txHash}`,
-  variant: "default",
-  duration: 5000,
-})
+            if (approvalReceipt) {
+              const status = typeof approvalReceipt.status === 'string' 
+                ? parseInt(approvalReceipt.status, 16) 
+                : approvalReceipt.status;
+              
+              if (status === 0) {
+                throw new Error("Approval transaction failed");
+              }
+              
+              console.log("[v0] Approval confirmed!");
+              toast({
+                title: "Approval Successful",
+                description: `${fromToken.symbol} approved. Getting fresh quote...`,
+                duration: 3000,
+              });
 
-
-          setFromAmount("");
-          setToAmount("");
+              // ✅ GET FRESH QUOTE AFTER APPROVAL (quote may be stale)
+              console.log("[v0] Fetching fresh quote after approval...");
+              
+              try {
+                const freshQuote = await getQuote(quoteRequest);
+                
+                if (freshQuote) {
+                  console.log("[v0] Fresh quote received after approval");
+                  console.log("[v0] Fresh quote details:", {
+                    fromAmount: freshQuote.action?.fromAmount,
+                    toAmount: freshQuote.estimate?.toAmount,
+                    transactionTo: freshQuote.transactionRequest?.to,
+                  });
+                  
+                  // Replace the entire quote object with the fresh one
+                  lifiQuote.transactionRequest = freshQuote.transactionRequest;
+                  lifiQuote.estimate = freshQuote.estimate;
+                  lifiQuote.action = freshQuote.action;
+                } else {
+                  console.warn("[v0] Failed to get fresh quote, using original");
+                }
+              } catch (refreshError) {
+                console.error("[v0] Error getting fresh quote:", refreshError);
+                console.warn("[v0] Will proceed with original quote");
+              }
+            } else {
+              console.warn("[v0] Approval confirmation timeout - proceeding anyway");
+            }
+          } else {
+            console.log("[v0] Sufficient allowance already exists");
+          }
+        } catch (approvalError) {
+          console.error("[v0] Approval error:", approvalError);
+          const errMsg = approvalError instanceof Error ? approvalError.message : String(approvalError);
+          
+          if (errMsg.includes("User rejected") || errMsg.includes("user rejected")) {
+            toast({
+              title: "Approval Cancelled",
+              description: "You cancelled the approval. The swap cannot proceed without approval.",
+              variant: "destructive",
+              duration: 5000,
+            });
+          } else {
+            toast({
+              title: "Approval Failed",
+              description: `Failed to approve token: ${errMsg}`,
+              variant: "destructive",
+              duration: 5000,
+            });
+          }
+          throw approvalError;
         }
       }
+
+      const toTokenDecimals =
+        toToken.decimals || (toToken.symbol === "USDC" ? 6 : 18);
+      const toAmountFormatted = (
+        Number.parseFloat(lifiQuote.estimate.toAmount) /
+        Math.pow(10, toTokenDecimals)
+      ).toFixed(6);
+      setToAmount(toAmountFormatted);
+
+      // Determine gas fee currency based on chain
+      const gasFeeCurrency = fromToken.chainName === "BSC" || fromToken.symbol === "BNB" ? "BNB" : 
+                             fromToken.chainName === "Polygon" || fromToken.symbol === "MATIC" ? "MATIC" : "ETH";
+      
+      console.log(`[v0] Gas fees will be paid in ${gasFeeCurrency} on ${fromToken.chainName} (Chain ID: ${fromChain})`);
+      
+      if (lifiQuote.estimate?.gasCosts) {
+        const gasCosts = lifiQuote.estimate.gasCosts;
+        console.log(`[v0] Estimated gas: ${gasCosts[0]?.estimate || "Unknown"} (${gasCosts[0]?.amountUSD ? `$${gasCosts[0].amountUSD}` : "N/A"})`);
+      }
+
+      // ✅ Log transaction details before execution
+      console.log("[v0] Final transaction details:");
+      console.log("- To address:", lifiQuote.transactionRequest?.to);
+      console.log("- Data length:", lifiQuote.transactionRequest?.data?.length);
+      console.log("- Value:", lifiQuote.transactionRequest?.value);
+      console.log("- Gas limit:", lifiQuote.transactionRequest?.gasLimit);
+      console.log("- Slippage tolerance:", slippageTolerance);
+      
+      // ✅ Test the transaction with eth_call before submitting
+      if (typeof window !== "undefined" && window.ethereum && lifiQuote.transactionRequest) {
+        try {
+          console.log("[v0] Testing transaction with eth_call...");
+          const testResult = await window.ethereum.request({
+            method: "eth_call",
+            params: [
+              {
+                from: fromWalletAddress,
+                to: lifiQuote.transactionRequest.to,
+                data: lifiQuote.transactionRequest.data,
+                value: lifiQuote.transactionRequest.value || "0x0",
+              },
+              "latest",
+            ],
+          });
+          console.log("[v0] eth_call test successful, result:", testResult);
+        } catch (testError: any) {
+          console.error("[v0] eth_call test failed:", testError);
+          
+          // If the test call fails, the actual transaction will definitely fail
+          let errorMsg = "Transaction simulation failed. ";
+          
+          if (testError.message?.includes("insufficient funds")) {
+            errorMsg += "Insufficient balance or gas.";
+          } else if (testError.message?.includes("slippage")) {
+            errorMsg += "Slippage tolerance too low. Try increasing it in settings.";
+          } else if (testError.message?.includes("INSUFFICIENT_OUTPUT_AMOUNT")) {
+            errorMsg += "Price impact too high or slippage too low. Increase slippage tolerance.";
+          } else {
+            errorMsg += testError.message || "Unknown error";
+          }
+          
+          toast({
+            title: "Transaction Will Fail",
+            description: errorMsg,
+            variant: "destructive",
+            duration: 6000,
+          });
+          
+          throw new Error(errorMsg);
+        }
+      }
+      
+      // ✅ signer
+      let signer = null;
+      if (typeof window !== "undefined" && (window as any).ethereum) {
+        const w = (window as any).ethereum;
+        signer = {
+          sendTransaction: async (txRequest: any) => {
+            console.log("[v0] Sending transaction with request:", {
+              to: txRequest.to,
+              from: fromWalletAddress,
+              value: txRequest.value,
+              gasLimit: txRequest.gasLimit,
+              dataLength: txRequest.data?.length,
+            });
+            console.log(`[v0] Transaction will execute on ${fromToken.chainName} (Chain ID: ${fromChain})`);
+            console.log(`[v0] Gas will be paid in ${gasFeeCurrency}`);
+            try {
+              const txHash = await w.request({
+                method: "eth_sendTransaction",
+                params: [
+                  {
+                    from: fromWalletAddress,
+                    to: txRequest.to,
+                    data: txRequest.data,
+                    value: txRequest.value,
+                    gas: txRequest.gasLimit,
+                    ...(txRequest.gasPrice && { gasPrice: txRequest.gasPrice }),
+                  },
+                ],
+              });
+
+              return {
+                hash: txHash,
+                wait: async () => {
+                  console.log("[v0] Waiting for transaction confirmation...");
+                  let receipt = null;
+                  let attempts = 0;
+                  const maxAttempts = 60;
+                  
+                  while (!receipt && attempts < maxAttempts) {
+                    try {
+                      receipt = await w.request({
+                        method: "eth_getTransactionReceipt",
+                        params: [txHash],
+                      });
+                      
+                      if (receipt) {
+                        console.log("[v0] Transaction receipt received:", receipt);
+                        
+                        const status = receipt.status;
+                        const statusNumber = typeof status === 'string' ? parseInt(status, 16) : status;
+                        
+                        if (statusNumber === 0) {
+                          console.error("[v0] Transaction failed on chain");
+                          console.error("[v0] Transaction receipt:", receipt);
+                          throw new Error("Transaction reverted - this may be due to slippage, insufficient balance, or price impact");
+                        }
+                        
+                        console.log("[v0] Transaction confirmed successfully!");
+                        break;
+                      } else {
+                        console.log(`[v0] Transaction pending... (attempt ${attempts + 1}/${maxAttempts})`);
+                        await new Promise((res) => setTimeout(res, 5000));
+                        attempts++;
+                      }
+                    } catch (error) {
+                      if (error instanceof Error && error.message.includes("reverted")) {
+                        console.error("[v0] Transaction reverted:", error);
+                        throw error;
+                      }
+                      console.log("[v0] Error checking receipt (will retry):", error);
+                      await new Promise((res) => setTimeout(res, 5000));
+                      attempts++;
+                    }
+                  }
+                  
+                  if (!receipt && attempts >= maxAttempts) {
+                    console.warn("[v0] Transaction confirmation timeout - but may still succeed");
+                  }
+                  
+                  return {
+                    transactionHash: txHash,
+                    status: receipt?.status || 1,
+                    blockNumber: receipt?.blockNumber,
+                    gasUsed: receipt?.gasUsed,
+                  };
+                },
+              };
+            } catch (error) {
+              console.error("[v0] Transaction failed:", error);
+              throw error;
+            }
+          },
+        };
+      }
+
+      console.log("[v0] Executing swap transaction...");
+      console.log("[v0] Quote being sent to executeSwap:", {
+        hasTransactionRequest: !!lifiQuote.transactionRequest,
+        hasEstimate: !!lifiQuote.estimate,
+        estimatedToAmount: lifiQuote.estimate?.toAmount,
+      });
+      
+      const txHash = await executeSwap(lifiQuote, signer);
+      
+      if (txHash) {
+        console.log("[v0] Transaction hash received:", txHash);
+        
+        toast({
+          title: `${isBridge ? "Bridge" : "Swap"} Transaction Submitted`,
+          description: `Transaction hash: ${txHash.substring(0, 10)}... Waiting for confirmation...`,
+          variant: "default",
+          duration: 5000,
+        });
+
+        // Wait for transaction to be indexed
+        const blockTimeMs = fromChain === 56 ? 3000 : 
+                           fromChain === 1 ? 12000 : 
+                           fromChain === 8453 ? 2000 : 
+                           fromChain === 42161 ? 250 : 
+                           5000;
+        
+        console.log(`[v0] Waiting ${blockTimeMs}ms for ${fromToken.chainName} to index transaction...`);
+        await new Promise((resolve) => setTimeout(resolve, blockTimeMs));
+
+        // Refresh wallet balances
+        console.log("[v0] Refreshing wallet balances...");
+        let refreshAttempts = 0;
+        const maxRefreshAttempts = 3;
+        
+        while (refreshAttempts < maxRefreshAttempts) {
+          try {
+            await refreshBalances();
+            console.log(`[v0] Balances refreshed successfully (attempt ${refreshAttempts + 1})`);
+            
+            if (refreshAttempts < maxRefreshAttempts - 1) {
+              await new Promise((resolve) => setTimeout(resolve, 3000));
+            }
+            refreshAttempts++;
+          } catch (refreshError) {
+            console.error(`[v0] Failed to refresh balances (attempt ${refreshAttempts + 1}):`, refreshError);
+            refreshAttempts++;
+            if (refreshAttempts < maxRefreshAttempts) {
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+            }
+          }
+        }
+
+        toast({
+          title: `${isBridge ? "Bridge" : "Swap"} Completed!`,
+          description: `Your tokens have been swapped successfully! Your balance has been updated.`,
+          variant: "default",
+          duration: 5000,
+        });
+
+        setFromAmount("");
+        setToAmount("");
+      } else {
+        console.error("[v0] No transaction hash returned from executeSwap");
+        toast({
+          title: "Transaction Failed",
+          description: "The transaction was reverted. Please try again with higher slippage tolerance.",
+          variant: "destructive",
+          duration: 5000,
+        });
+      }
     } catch (error) {
-      console.error("[v0] Swap error:", error);
-      alert(`${isBridge ? "Bridge" : "Swap"} failed. Please try again.`);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error("[v0] Swap error:", errMsg);
+      
+      let errorDescription = errMsg;
+      
+      if (errMsg.includes("Invalid request parameters")) {
+        errorDescription = "LiFi rejected the token pair or amount. Ensure token addresses and amounts are valid and supported.";
+      } else if (errMsg.includes("reverted") || errMsg.includes("slippage") || errMsg.includes("price impact")) {
+        errorDescription = "Transaction reverted on chain. Try: 1) Increase slippage tolerance, 2) Reduce swap amount, 3) Wait and try again.";
+      } else if (errMsg.includes("insufficient funds") || errMsg.includes("insufficient balance")) {
+        errorDescription = "Insufficient balance. You need more tokens or gas fees.";
+      } else if (errMsg.includes("User rejected") || errMsg.includes("user rejected")) {
+        errorDescription = "Transaction was cancelled.";
+      }
+      
+      toast({
+        title: "Swap Failed",
+        description: errorDescription,
+        variant: "destructive",
+        duration: 6000,
+      });
+    } finally {
+      setIsSwapping(false);
     }
   };
 
@@ -347,11 +831,11 @@ export function SimpleSwapInterface() {
       pastedWalletInput.length !== 42
     ) {
       toast({
-  title: "Invalid Address",
-  description: "Please enter a valid 0x wallet address.",
-  variant: "destructive",
-  duration: 4000,
-})
+        title: "Invalid Address",
+        description: "Please enter a valid 0x wallet address.",
+        variant: "destructive",
+        duration: 4000,
+      });
 
       return;
     }
@@ -401,12 +885,11 @@ export function SimpleSwapInterface() {
           setFromAmount(minAmount.toString());
         } else {
           toast({
-  title: "Insufficient Balance",
-  description: `Minimum swap amount required: ${minAmount} ${fromToken.symbol}`,
-  variant: "destructive",
-  duration: 4000,
-})
-
+            title: "Insufficient Balance",
+            description: `Minimum swap amount required: ${minAmount} ${fromToken.symbol}`,
+            variant: "destructive",
+            duration: 4000,
+          });
         }
       }
     }
@@ -425,23 +908,21 @@ export function SimpleSwapInterface() {
 
       setLimitOrders((prev) => [...prev, newOrder]);
       toast({
-  title: "Limit Order Placed",
-  description: `Order ID: ${newOrder.id}`,
-  variant: "default",
-  duration: 4000,
-})
-
+        title: "Limit Order Placed",
+        description: `Order ID: ${newOrder.id}`,
+        variant: "default",
+        duration: 4000,
+      });
 
       setFromAmount("");
     } catch (error) {
       console.error("[v0] Limit order error:", error);
       toast({
-  title: "Limit Order Failed",
-  description: "Unable to place limit order. Please try again.",
-  variant: "destructive",
-  duration: 4000,
-})
-
+        title: "Limit Order Failed",
+        description: "Unable to place limit order. Please try again.",
+        variant: "destructive",
+        duration: 4000,
+      });
     }
   };
 
@@ -544,8 +1025,12 @@ export function SimpleSwapInterface() {
 
         try {
           console.log("[v0] Client: Requesting LiFi quote via server action");
-          const fromTokenDecimals =
-            fromToken.decimals || (fromToken.symbol === "USDC" ? 6 : 18);
+          
+          const fromTokenDecimals = fromToken.decimals || 
+            (fromToken.symbol === "USDC" ? 6 : 
+             fromToken.symbol === "USDT" ? 6 : 
+             fromToken.symbol === "WBTC" ? 8 : 18);
+          
           const fromAmountWei = (
             Number.parseFloat(fromAmount) * Math.pow(10, fromTokenDecimals)
           ).toString();
@@ -563,12 +1048,17 @@ export function SimpleSwapInterface() {
           };
 
           console.log("[v0] Quote request:", quoteRequest);
+          console.log(`[v0] FromToken details - Symbol: ${fromToken.symbol}, Address: ${fromToken.address}, ChainId: ${fromToken.chainId}, Decimals: ${fromTokenDecimals}`);
+          console.log(`[v0] ToToken details - Symbol: ${toToken.symbol}, Address: ${toToken.address}, ChainId: ${toToken.chainId}`);
           const lifiQuote = await getQuote(quoteRequest);
           if (lifiQuote) {
             console.log("[v0] Quote received:", lifiQuote);
 
-            const toTokenDecimals =
-              toToken.decimals || (toToken.symbol === "USDC" ? 6 : 18);
+            const toTokenDecimals = toToken.decimals || 
+              (toToken.symbol === "USDC" ? 6 : 
+               toToken.symbol === "USDT" ? 6 : 
+               toToken.symbol === "WBTC" ? 8 : 18);
+            
             const toAmountFormatted = (
               Number.parseFloat(lifiQuote.estimate.toAmount) /
               Math.pow(10, toTokenDecimals)
@@ -1175,14 +1665,18 @@ export function SimpleSwapInterface() {
 
                 <Button
                   onClick={handleSwap}
-                  disabled={isLiFiLoading}
+                  disabled={isLiFiLoading || isSwapping}
                   className={`w-full h-12 font-semibold rounded-none my-4 text-lg ${
                     isConnected
                       ? "bg-gradient-to-r from-[#F3DA5F] to-[#FCD404] text-black"
                       : "bg-gradient-to-r from-[#F3DA5F] to-[#FCD404] text-black"
-                  }`}
+                  } ${(isLiFiLoading || isSwapping) ? "opacity-70 cursor-not-allowed" : ""}`}
                 >
-                  {isLiFiLoading ? "Processing..." : buttonText}
+                  {isSwapping 
+                    ? "Swapping..." 
+                    : isLiFiLoading 
+                    ? "Getting Quote..." 
+                    : buttonText}
                 </Button>
 
                 {!isConnected && (

@@ -333,18 +333,54 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
 
   const filteredChains = CHAINS.filter((chain) => chain.name.toLowerCase().includes(chainSearchQuery.toLowerCase()))
 
+  // Helper function to map chain name to chainId
+  const getChainIdFromName = (chainName: string): number => {
+    const chainMap: { [key: string]: number } = {
+      "Ethereum": 1,
+      "Base": 8453,
+      "Arbitrum": 42161,
+      "BSC": 56,
+      "Polygon": 137,
+      "Optimism": 10,
+      "Avalanche": 43114,
+      "Fantom": 250,
+    };
+    return chainMap[chainName] || 1;
+  };
+
+  // Helper to get correct decimals based on token symbol and chain
+  const getTokenDecimals = (symbol: string, chainId: number): number => {
+    // USDT decimals vary by chain
+    if (symbol === "USDT") {
+      return [1, 42161, 137].includes(chainId) ? 6 : 18; // Eth, Arbitrum, Polygon use 6, BSC uses 18
+    }
+    // USDC always uses 6
+    if (symbol === "USDC") return 6;
+    // WBTC uses 8
+    if (symbol === "WBTC") return 8;
+    // Most tokens use 18
+    return 18;
+  };
+
   const allTokens = [
     // User's actual token balances first
-    ...tokenBalances.map((balance) => ({
-      symbol: balance.symbol,
-      name: balance.name,
-      address: balance.address === "native" ? "0x0000000000000000000000000000000000000000" : balance.address,
-      chainId: 1, // Default to Ethereum, could be enhanced to detect actual chain
-      chainName: balance.name.includes("(") ? balance.name.split("(")[1].replace(")", "") : "Ethereum",
-      balance: balance.balance,
-      usdValue: `$${balance.usdValue.toFixed(2)}`,
-      decimals: 18,
-    })),
+    ...tokenBalances.map((balance) => {
+      // Extract chain name from balance.name (e.g., "Tether USD (BSC)" -> "BSC")
+      const chainName = balance.chain || (balance.name.includes("(") ? balance.name.split("(")[1].replace(")", "") : "Ethereum");
+      const chainId = getChainIdFromName(chainName);
+      const decimals = getTokenDecimals(balance.symbol, chainId);
+      
+      return {
+        symbol: balance.symbol,
+        name: balance.name,
+        address: balance.address === "native" ? "0x0000000000000000000000000000000000000000" : balance.address,
+        chainId: chainId,
+        chainName: chainName,
+        balance: balance.balance,
+        usdValue: `$${balance.usdValue.toFixed(2)}`,
+        decimals: decimals,
+      };
+    }),
     // LiFi supported tokens for selected chain
     ...lifiTokens,
     // Popular tokens as fallback
@@ -365,6 +401,13 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
   })
 
   const handleTokenSelect = (token: Token) => {
+    console.log("[v0] Token selected:", {
+      symbol: token.symbol,
+      address: token.address,
+      chainId: token.chainId,
+      chainName: token.chainName,
+      decimals: token.decimals,
+    });
     onSelectToken(token)
     onClose()
   }
