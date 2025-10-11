@@ -13,14 +13,14 @@ interface ConnectingModalProps {
 }
 
 const WALLET_ICONS: { [key: string]: string } = {
-  metamask: "https://raw.githubusercontent.com/MetaMask/brand-resources/master/SVG/metamask-fox.svg",
+  metamask: "https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg",
   coinbase: "https://avatars.githubusercontent.com/u/18060234?s=280&v=4",
   trust: "https://trustwallet.com/assets/images/media/assets/trust_platform.svg",
-  rabby: "/rabby-wallet-logo.jpg",
-  okx: "/okx-wallet-logo.png",
+  rabby: "https://rabby.io/assets/images/logo-128.png",
+  okx: "https://static.okx.com/cdn/assets/imgs/221/8B0F8A7B25C5B0B0.png",
   brave: "https://brave.com/static-assets/images/brave-logo-sans-text.svg",
-  phantom: "https://phantom.app/img/phantom-logo.svg",
-  walletconnect: "https://walletconnect.com/walletconnect-logo.svg",
+  phantom: "https://phantom.app/img/logo.png",
+  walletconnect: "https://walletconnect.com/static/favicon.png",
 }
 
 export function ConnectingModal({ open, onOpenChange, walletName, walletId }: ConnectingModalProps) {

@@ -241,28 +241,16 @@ export function WalletModal({
     setSelectedWalletName(wallet.name)
     setSelectedWalletId(wallet.id)
 
-    // If installed and we have a provider, try direct provider flow first
+    // If installed and we have a provider, use it directly
     if (wallet.isInstalled && wallet.provider) {
       try {
-        const ok = await tryProviderRequest(wallet.provider)
-        if (ok) {
-          try {
-            // pass provider override to ensure same instance is used
-            await connect(wallet.id)
-          } catch (e) {
-            console.warn("[WalletModal] connect(wallet.id) failed after provider connect:", e)
-          }
-
-          if (swapWalletType) setJustConnectedSwapWallet(true)
-          return
-        }
-
-        // fallback to connect by wallet id
-        await connect(wallet.id)
+        console.log(`[WalletModal] Connecting with provider for ${wallet.name}`)
+        // Pass the specific provider to connect function
+        await connect(wallet.id, wallet.provider)
         if (swapWalletType) setJustConnectedSwapWallet(true)
         return
       } catch (err) {
-        console.error(`[WalletModal] provider direct connect failed for ${wallet.name}:`, err)
+        console.error(`[WalletModal] provider connect failed for ${wallet.name}:`, err)
       }
     }
 

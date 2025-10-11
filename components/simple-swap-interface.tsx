@@ -25,6 +25,7 @@ import { ApeModeSwapInterface } from "./apemode-swap-interface";
 import { Dialog, DialogContent, DialogTitle } from "@radix-ui/react-dialog";
 import { DialogHeader } from "./ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/lib/supabaseClient";
 
 interface Token {
   symbol: string;
@@ -44,8 +45,6 @@ const DEFAULT_FROM_TOKEN: Token = {
   address: "0x0000000000000000000000000000000000000000",
   chainId: 1,
   chainName: "Ethereum",
-  balance: "0.000027",
-  usdValue: "$2.33",
 };
 
 const DEFAULT_TO_TOKEN: Token = {
@@ -54,13 +53,11 @@ const DEFAULT_TO_TOKEN: Token = {
   address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   chainId: 1,
   chainName: "Ethereum",
-  balance: "0",
-  usdValue: "$0.00",
   decimals: 6,
 };
 
 export function SimpleSwapInterface() {
-  const { address, isConnected, balance, isConnecting, connectingWallet, switchNetwork, chainId, refreshBalances } =
+  const { address, isConnected, balance, isConnecting, connectingWallet, connectedWallet, switchNetwork, chainId, refreshBalances, tokenBalances } =
     useWallet();
   const {
     getQuote,
@@ -117,12 +114,67 @@ export function SimpleSwapInterface() {
   // Swap processing state
   const [isSwapping, setIsSwapping] = useState(false);
 
+  // Sync wallet addresses with connected wallet
   useEffect(() => {
     if (isConnected && address) {
-      if (!fromWalletAddress) setFromWalletAddress(address);
-      if (!toWalletAddress) setToWalletAddress(address);
+      // Update both addresses when wallet connects/changes
+      setFromWalletAddress(address);
+      setToWalletAddress(address);
+      console.log("[Swap] 🔄 Wallet addresses synced:", address);
+    } else if (!isConnected) {
+      // Clear addresses when wallet disconnects
+      setFromWalletAddress(undefined);
+      setToWalletAddress(undefined);
+      console.log("[Swap] 🔌 Wallet disconnected, addresses cleared");
     }
-  }, [isConnected, address, fromWalletAddress, toWalletAddress]);
+  }, [isConnected, address]);
+
+  // Update default tokens with actual wallet balances
+  useEffect(() => {
+    if (isConnected && tokenBalances && tokenBalances.length > 0) {
+      console.log("[Swap] 📊 Updating token balances from wallet...");
+      
+      // Update fromToken balance if it's ETH on Ethereum
+      if (fromToken.symbol === "ETH" && fromToken.chainName === "Ethereum") {
+        const ethBalance = tokenBalances.find(
+          (t) => t.symbol === "ETH" && t.chain === "Ethereum"
+        );
+        if (ethBalance) {
+          console.log(`[Swap] ✅ Found ETH balance: ${ethBalance.balance} ($${ethBalance.usdValue.toFixed(2)})`);
+          setFromToken((prev) => ({
+            ...prev,
+            balance: ethBalance.balance,
+            usdValue: `$${ethBalance.usdValue.toFixed(2)}`,
+          }));
+        }
+      }
+
+      // Update toToken balance if it's USDC on Ethereum
+      if (toToken.symbol === "USDC" && toToken.chainName === "Ethereum") {
+        const usdcBalance = tokenBalances.find(
+          (t) => 
+            t.symbol === "USDC" && 
+            t.chain === "Ethereum" &&
+            t.address.toLowerCase() === toToken.address.toLowerCase()
+        );
+        if (usdcBalance) {
+          console.log(`[Swap] ✅ Found USDC balance: ${usdcBalance.balance} ($${usdcBalance.usdValue.toFixed(2)})`);
+          setToToken((prev) => ({
+            ...prev,
+            balance: usdcBalance.balance,
+            usdValue: `$${usdcBalance.usdValue.toFixed(2)}`,
+          }));
+        } else {
+          // If no balance found, set to 0
+          setToToken((prev) => ({
+            ...prev,
+            balance: "0",
+            usdValue: "$0.00",
+          }));
+        }
+      }
+    }
+  }, [isConnected, tokenBalances, fromToken.symbol, fromToken.chainName, toToken.symbol, toToken.chainName, toToken.address]);
 
   const handleSwapTokens = () => {
     const tempToken = fromToken;
@@ -774,6 +826,68 @@ export function SimpleSwapInterface() {
           duration: 5000,
         });
 
+        // Calculate accurate USD value for volume tracking
+        let swapVolumeUsd = 0;
+        try {
+          const fromAmountNum = Number.parseFloat(fromAmount);
+          
+          // Method 1: For stablecoins, amount = USD value (most accurate)
+          if (['USDT', 'USDC', 'DAI', 'BUSD', 'FRAX', 'TUSD'].includes(fromToken.symbol)) {
+            swapVolumeUsd = fromAmountNum;
+            console.log(`[v0] 💵 Stablecoin: ${fromAmountNum} ${fromToken.symbol} = $${swapVolumeUsd}`);
+          } 
+          // Method 2: Use token prices (updated estimates)
+          else {
+            const tokenPrices: Record<string, number> = {
+              'ETH': 3500,
+              'WETH': 3500,
+              'BTC': 65000,
+              'WBTC': 65000,
+              'BNB': 600,
+              'MATIC': 0.80,
+              'AVAX': 35,
+              'SOL': 145,
+              'ARB': 1.20,
+              'OP': 2.50,
+            };
+            
+            const tokenPrice = tokenPrices[fromToken.symbol];
+            if (tokenPrice) {
+              swapVolumeUsd = fromAmountNum * tokenPrice;
+              console.log(`[v0] 💎 Token: ${fromAmountNum} ${fromToken.symbol} × $${tokenPrice} = $${swapVolumeUsd}`);
+            } else {
+              // Method 3: Try to extract from token USD value in wallet
+              if (fromToken.usdValue && fromToken.balance) {
+                const totalUsd = Number.parseFloat(fromToken.usdValue.replace('$', '').replace(',', ''));
+                const totalBalance = Number.parseFloat(fromToken.balance);
+                if (totalBalance > 0) {
+                  const pricePerToken = totalUsd / totalBalance;
+                  swapVolumeUsd = fromAmountNum * pricePerToken;
+                  console.log(`[v0] 📊 Calculated: ${fromAmountNum} ${fromToken.symbol} × $${pricePerToken.toFixed(2)} = $${swapVolumeUsd}`);
+                }
+              }
+            }
+          }
+          
+          // Only log if we got a valid USD value
+          if (swapVolumeUsd > 0) {
+            await logSwapVolume({
+              fromToken: fromToken.symbol,
+              toToken: toToken.symbol,
+              fromAmount: fromAmount,
+              toAmount: toAmountFormatted,
+              fromChain: fromChain,
+              toChain: toChain,
+              swapVolumeUsd: swapVolumeUsd,
+              walletAddress: fromWalletAddress || "",
+            });
+          } else {
+            console.warn(`[v0] ⚠️ Could not calculate USD value for ${fromToken.symbol} swap`);
+          }
+        } catch (err) {
+          console.error("[v0] Error calculating swap volume:", err);
+        }
+
         setFromAmount("");
         setToAmount("");
       } else {
@@ -851,6 +965,44 @@ export function SimpleSwapInterface() {
 
   const formatAddress = (addr: string) => {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+
+  // Function to log swap volume accurately
+  const logSwapVolume = async (swapData: {
+    fromToken: string;
+    toToken: string;
+    fromAmount: string;
+    toAmount: string;
+    fromChain: number;
+    toChain: number;
+    swapVolumeUsd: number;
+    walletAddress: string;
+  }) => {
+    try {
+      console.log(`[v0] 💰 Logging swap: ${swapData.fromAmount} ${swapData.fromToken} = $${swapData.swapVolumeUsd.toFixed(2)} USD`);
+      
+      const { error } = await supabase.from("swap_analytics").insert([
+        {
+          timestamp: new Date().toISOString(),
+          from_token: swapData.fromToken,
+          to_token: swapData.toToken,
+          from_amount: swapData.fromAmount,
+          to_amount: swapData.toAmount,
+          from_chain: swapData.fromChain,
+          to_chain: swapData.toChain,
+          swap_volume_usd: swapData.swapVolumeUsd,
+          wallet_address: swapData.walletAddress,
+        },
+      ]);
+
+      if (error) {
+        console.error("[v0] ❌ Failed to log swap volume:", error);
+      } else {
+        console.log(`[v0] ✅ Swap volume logged: $${swapData.swapVolumeUsd.toFixed(2)}`);
+      }
+    } catch (err) {
+      console.error("[v0] Error logging swap volume:", err);
+    }
   };
 
   const handlePercentageClick = (percentage: number) => {
@@ -1163,6 +1315,7 @@ export function SimpleSwapInterface() {
                     <span className="text-gray-400 text-sm">From</span>
                     <WalletSelectorDropdown
                       address={fromWalletAddress}
+                      walletType={connectedWallet}
                       onConnectNewWallet={() => handleConnectNewWallet("from")}
                       onPasteWallet={() => handlePasteWallet("from")}
                     />
@@ -1307,6 +1460,7 @@ export function SimpleSwapInterface() {
                     <span className="text-gray-400 text-sm">To</span>
                     <WalletSelectorDropdown
                       address={toWalletAddress}
+                      walletType={connectedWallet}
                       onConnectNewWallet={() => handleConnectNewWallet("to")}
                       onPasteWallet={() => handlePasteWallet("to")}
                     />
@@ -1373,6 +1527,7 @@ export function SimpleSwapInterface() {
                     <span className="text-gray-400 text-sm">From</span>
                     <WalletSelectorDropdown
                       address={fromWalletAddress}
+                      walletType={connectedWallet}
                       onConnectNewWallet={() => handleConnectNewWallet("from")}
                       onPasteWallet={() => handlePasteWallet("from")}
                     />
@@ -1517,6 +1672,7 @@ export function SimpleSwapInterface() {
                     <span className="text-gray-400 text-sm">To</span>
                     <WalletSelectorDropdown
                       address={toWalletAddress}
+                      walletType={connectedWallet}
                       onConnectNewWallet={() => handleConnectNewWallet("to")}
                       onPasteWallet={() => handlePasteWallet("to")}
                     />

@@ -146,15 +146,11 @@ export default function Page() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
        <div className="bg-[#0C0C0C] p-6 px-2 flex gap-6  items-center justify-center">
       <div
-        className={`relative md:w-60 md:h-60 w-40 h-40 rounded-full border-[30px] transition-all duration-500 ${getBorder()}`}
+        className="relative md:w-60 md:h-60 w-40 h-40 rounded-full border-[30px] transition-all duration-500"
         style={{
           transform: `rotate(${rotation}deg)`,
           transition: "transform 0.3s linear",
-          borderImage:
-            totalVolume > 0
-              ? "conic-gradient(from 0deg, #FFD600, #F3DA5F, #FFD600) 1"
-              : "none",
-          borderImageSlice: 1,
+          borderColor: totalVolume > 0 ? "#FED402" : "#1A1A1C",
         }}
       >
         <div className="absolute inset-0 flex items-center justify-center">

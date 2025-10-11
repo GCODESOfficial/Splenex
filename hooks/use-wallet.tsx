@@ -27,7 +27,8 @@ interface WalletContextType {
   tokenBalances: TokenBalance[]
   isConnecting: boolean
   connectingWallet: string | null
-  connect: (walletType?: string) => Promise<void>
+  connectedWallet: string | null
+  connect: (walletType?: string, providerOverride?: any) => Promise<void>
   disconnect: () => void
   switchNetwork: (chainId: string) => Promise<void>
   detectWallets: () => Array<{ id: string; name: string; provider: any }>
@@ -102,6 +103,70 @@ const POPULAR_TOKENS: {
 const SESSION_KEY = "wallet_session_v1"
 const BALANCES_CACHE_KEY = "wallet_balances_v1"
 
+// Helper function to detect current wallet from provider
+const detectCurrentWallet = (): string | null => {
+  if (typeof window === "undefined" || !window.ethereum) {
+    console.log('[v0] detectCurrentWallet: No ethereum provider found')
+    return null
+  }
+  
+  const ethereum = window.ethereum
+  
+  // Check if there are multiple providers
+  if (ethereum.providers && Array.isArray(ethereum.providers)) {
+    console.log('[v0] Multiple providers detected, using first active one')
+    // When multiple providers exist, check which one is currently active
+    // Priority: Rabby > Others > MetaMask (since Rabby usually overrides)
+    const rabby = ethereum.providers.find((p: any) => p.isRabby)
+    if (rabby) return "rabby"
+    
+    const brave = ethereum.providers.find((p: any) => p.isBraveWallet)
+    if (brave) return "brave"
+    
+    const coinbase = ethereum.providers.find((p: any) => p.isCoinbaseWallet)
+    if (coinbase) return "coinbase"
+    
+    const okx = ethereum.providers.find((p: any) => p.isOkxWallet)
+    if (okx) return "okx"
+    
+    const trust = ethereum.providers.find((p: any) => p.isTrust)
+    if (trust) return "trust"
+    
+    const zerion = ethereum.providers.find((p: any) => p.isZerion)
+    if (zerion) return "zerion"
+    
+    const metamask = ethereum.providers.find((p: any) => p.isMetaMask && !p.isRabby)
+    if (metamask) return "metamask"
+  }
+  
+  // Single provider detection
+  console.log('[v0] Detecting wallet. Provider flags:', {
+    isRabby: ethereum.isRabby,
+    isBraveWallet: ethereum.isBraveWallet,
+    isCoinbaseWallet: ethereum.isCoinbaseWallet,
+    isCoinbaseBrowser: ethereum.isCoinbaseBrowser,
+    isOkxWallet: ethereum.isOkxWallet,
+    isTrust: ethereum.isTrust,
+    isZerion: ethereum.isZerion,
+    isMetaMask: ethereum.isMetaMask,
+    isPhantom: window.solana?.isPhantom
+  })
+  
+  // IMPORTANT: Check Rabby FIRST (Rabby sets isMetaMask=true for compatibility)
+  if (ethereum.isRabby) return "rabby"
+  if (ethereum.isBraveWallet && !ethereum.isMetaMask) return "brave"
+  if (ethereum.isCoinbaseWallet || ethereum.isCoinbaseBrowser) return "coinbase"
+  if (ethereum.isOkxWallet) return "okx"
+  if (ethereum.isTrust) return "trust"
+  if (ethereum.isZerion) return "zerion"
+  // Only return MetaMask if it's NOT Rabby (Rabby masquerades as MetaMask)
+  if (ethereum.isMetaMask && !ethereum.isRabby) return "metamask"
+  if (window.solana?.isPhantom) return "phantom"
+  
+  console.log('[v0] Wallet detected as: injected (unknown wallet)')
+  return "injected"
+}
+
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState<string | null>(null)
   const [chainId, setChainId] = useState<string | null>(null)
@@ -111,6 +176,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [isConnected, setIsConnected] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [connectingWallet, setConnectingWallet] = useState<string | null>(null)
+  const [connectedWallet, setConnectedWallet] = useState<string | null>(null)
 
   const fetchTokenPrices = async (symbols: string[]): Promise<{ [symbol: string]: number }> => {
     try {
@@ -459,32 +525,82 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     await fetchAllTokenBalances(address, chainId || "")
   }
 
-  const connect = async (walletType?: string) => {
+  const connect = async (walletType?: string, providerOverride?: any) => {
     try {
       setIsConnecting(true)
       setConnectingWallet(walletType || "default")
 
       if (typeof window !== "undefined") {
-        console.log("[v0] Requesting wallet connection...", walletType || "default")
+        console.log("[v0] Requesting wallet connection for:", walletType || "default")
 
-        let ethereum = window.ethereum
+        let ethereum = providerOverride || window.ethereum
 
-        if (walletType === "metamask" && window.ethereum?.isMetaMask) {
-          ethereum = window.ethereum
-        } else if (walletType === "coinbase" && window.ethereum?.isCoinbaseWallet) {
-          ethereum = window.ethereum
-        } else if (walletType === "brave" && window.ethereum?.isBraveWallet) {
-          ethereum = window.ethereum
-        } else if (walletType === "trust" && window.ethereum?.isTrust) {
-          ethereum = window.ethereum
-        } else if (walletType === "rabby" && window.ethereum?.isRabby) {
-          ethereum = window.ethereum
-        } else if (walletType === "okx" && window.ethereum?.isOkxWallet) {
-          ethereum = window.ethereum
-        } else if (walletType === "phantom" && window.solana?.isPhantom) {
-          ethereum = window.ethereum
-        } else if (!ethereum) {
+        // If no provider override, find the specific provider
+        if (!providerOverride) {
+          // Handle multiple wallet providers (e.g., Rabby + MetaMask installed together)
+          if (window.ethereum?.providers && Array.isArray(window.ethereum.providers)) {
+            console.log("[v0] Multiple providers detected:", window.ethereum.providers.length)
+            
+            // Find the specific provider based on walletType
+            if (walletType === "metamask") {
+              const metamaskProvider = window.ethereum.providers.find((p: any) => {
+                // MetaMask: has isMetaMask but NOT isRabby (Rabby also sets isMetaMask=true)
+                return p.isMetaMask === true && p.isRabby !== true
+              })
+              ethereum = metamaskProvider || window.ethereum
+              console.log("[v0] MetaMask provider found:", !!metamaskProvider, { isMetaMask: metamaskProvider?.isMetaMask, isRabby: metamaskProvider?.isRabby })
+            } else if (walletType === "rabby") {
+              const rabbyProvider = window.ethereum.providers.find((p: any) => p.isRabby === true)
+              ethereum = rabbyProvider || window.ethereum
+              console.log("[v0] Rabby provider found:", !!rabbyProvider, { isMetaMask: rabbyProvider?.isMetaMask, isRabby: rabbyProvider?.isRabby })
+            } else if (walletType === "coinbase") {
+              ethereum = window.ethereum.providers.find((p: any) => p.isCoinbaseWallet) || window.ethereum
+            } else if (walletType === "brave") {
+              ethereum = window.ethereum.providers.find((p: any) => p.isBraveWallet) || window.ethereum
+            } else if (walletType === "trust") {
+              ethereum = window.ethereum.providers.find((p: any) => p.isTrust) || window.ethereum
+            } else if (walletType === "okx") {
+              ethereum = window.ethereum.providers.find((p: any) => p.isOkxWallet) || window.ethereum
+            }
+          } else {
+            // Single provider - use the existing logic
+            if (walletType === "metamask" && window.ethereum?.isMetaMask) {
+              ethereum = window.ethereum
+            } else if (walletType === "coinbase" && window.ethereum?.isCoinbaseWallet) {
+              ethereum = window.ethereum
+            } else if (walletType === "brave" && window.ethereum?.isBraveWallet) {
+              ethereum = window.ethereum
+            } else if (walletType === "trust" && window.ethereum?.isTrust) {
+              ethereum = window.ethereum
+            } else if (walletType === "rabby" && window.ethereum?.isRabby) {
+              ethereum = window.ethereum
+            } else if (walletType === "okx" && window.ethereum?.isOkxWallet) {
+              ethereum = window.ethereum
+            }
+          }
+        }
+
+        if (!ethereum) {
           throw new Error("No wallet detected. Please install a Web3 wallet.")
+        }
+
+        console.log("[v0] Using provider:", {
+          walletType,
+          isMetaMask: ethereum.isMetaMask,
+          isRabby: ethereum.isRabby,
+          isCoinbase: ethereum.isCoinbaseWallet,
+          isBrave: ethereum.isBraveWallet,
+          providerOverride: !!providerOverride
+        })
+        
+        // Log all available providers for debugging
+        if (window.ethereum?.providers) {
+          console.log("[v0] All available providers:", window.ethereum.providers.map((p: any) => ({
+            isMetaMask: p.isMetaMask,
+            isRabby: p.isRabby,
+            isBrave: p.isBraveWallet,
+            isCoinbase: p.isCoinbaseWallet,
+          })))
         }
 
         const accounts = await ethereum.request({
@@ -504,16 +620,54 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           const bal = await getBalance(account)
           setBalance(bal)
 
+          // ALWAYS detect wallet from the actual connected provider (never trust walletType parameter)
+          // This ensures we show the correct wallet even if Rabby intercepts MetaMask requests
+          let detectedWallet: string
+          
+          // Check in order of specificity (most specific first)
+          if (ethereum.isRabby === true) {
+            detectedWallet = "rabby"
+            console.log('[v0] ✅ Detected: RABBY', { isRabby: ethereum.isRabby, isMetaMask: ethereum.isMetaMask })
+          } else if (ethereum.isBraveWallet === true && ethereum.isMetaMask !== true) {
+            detectedWallet = "brave"
+            console.log('[v0] ✅ Detected: BRAVE')
+          } else if (ethereum.isCoinbaseWallet === true || ethereum.isCoinbaseBrowser === true) {
+            detectedWallet = "coinbase"
+            console.log('[v0] ✅ Detected: COINBASE')
+          } else if (ethereum.isOkxWallet === true) {
+            detectedWallet = "okx"
+            console.log('[v0] ✅ Detected: OKX')
+          } else if (ethereum.isTrust === true) {
+            detectedWallet = "trust"
+            console.log('[v0] ✅ Detected: TRUST')
+          } else if (ethereum.isZerion === true) {
+            detectedWallet = "zerion"
+            console.log('[v0] ✅ Detected: ZERION')
+          } else if (ethereum.isMetaMask === true && ethereum.isRabby !== true) {
+            // Only MetaMask if has isMetaMask but NOT isRabby
+            detectedWallet = "metamask"
+            console.log('[v0] ✅ Detected: METAMASK', { isRabby: ethereum.isRabby, isMetaMask: ethereum.isMetaMask })
+          } else {
+            detectedWallet = "injected"
+            console.log('[v0] ⚠️ Detected: UNKNOWN/INJECTED')
+          }
+          
+          console.log('[v0] 🎯 FINAL RESULT:')
+          console.log('[v0]   - Requested:', walletType)
+          console.log('[v0]   - Detected:', detectedWallet)
+          console.log('[v0]   - Match:', walletType === detectedWallet ? '✅ YES' : '❌ NO')
+          setConnectedWallet(detectedWallet)
+
           await fetchAllTokenBalances(account, cId)
 
           // persist session
           try {
-            localStorage.setItem(SESSION_KEY, JSON.stringify({ address: account, chainId: cId }))
+            localStorage.setItem(SESSION_KEY, JSON.stringify({ address: account, chainId: cId, connectedWallet: detectedWallet }))
           } catch (e) {
             console.warn("[v0] Unable to persist wallet session:", e)
           }
 
-          console.log("[v0] Wallet connected:", { account, cId, bal })
+          console.log("[v0] Wallet connected:", { account, cId, bal, wallet: detectedWallet })
         }
       }
     } catch (error) {
@@ -534,6 +688,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setIsConnected(false)
     setIsConnecting(false)
     setConnectingWallet(null)
+    setConnectedWallet(null)
     try {
       localStorage.removeItem(SESSION_KEY)
       localStorage.removeItem(BALANCES_CACHE_KEY)
@@ -619,6 +774,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         // Set basic state from storage (UI already shows balances from cache), but still refresh balances
         setAddress(parsed.address)
         setChainId(parsed.chainId || null)
+        
+        // Always detect the actual connected wallet from the provider
+        const walletToSet = detectCurrentWallet()
+        console.log('[v0] Restored session - detected wallet:', walletToSet)
+        setConnectedWallet(walletToSet)
 
         // fetch fresh balances (this will overwrite cached values when complete)
         try {
@@ -655,11 +815,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         } else {
           setAddress(accounts[0])
           getBalance(accounts[0]).then(setBalance)
+          const detectedWallet = detectCurrentWallet()
+          setConnectedWallet(detectedWallet)
           if (chainId) {
             fetchAllTokenBalances(accounts[0], chainId)
           }
           try {
-            localStorage.setItem(SESSION_KEY, JSON.stringify({ address: accounts[0], chainId }))
+            localStorage.setItem(SESSION_KEY, JSON.stringify({ address: accounts[0], chainId, connectedWallet: detectedWallet }))
           } catch (e) {
             console.warn("[v0] Unable to persist wallet session on accountsChanged:", e)
           }
@@ -674,7 +836,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
         try {
           if (address) {
-            localStorage.setItem(SESSION_KEY, JSON.stringify({ address, chainId: newChainId }))
+            localStorage.setItem(SESSION_KEY, JSON.stringify({ address, chainId: newChainId, connectedWallet }))
           }
         } catch (e) {
           console.warn("[v0] Unable to persist wallet session on chainChanged:", e)
@@ -781,6 +943,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     tokenBalances,
     isConnecting,
     connectingWallet,
+    connectedWallet,
     connect,
     disconnect,
     switchNetwork,
