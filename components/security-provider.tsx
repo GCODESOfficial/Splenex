@@ -43,7 +43,7 @@ export function SecurityProvider({ children }: { children: React.ReactNode }) {
       console.profileEnd = noop;
 
       // Sanitize errors and warnings
-      console.error = (...args: any[]) => {
+      console.error = (...args: unknown[]) => {
         const sanitized = args.map(arg => {
           if (typeof arg === 'string') {
             return arg
@@ -56,7 +56,7 @@ export function SecurityProvider({ children }: { children: React.ReactNode }) {
         originalError('[ERROR]', ...sanitized);
       };
 
-      console.warn = (...args: any[]) => {
+      console.warn = (...args: unknown[]) => {
         const sanitized = args.map(arg => {
           if (typeof arg === 'string') {
             return arg

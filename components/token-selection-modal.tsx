@@ -661,7 +661,7 @@ export function TokenSelectionModal({
             {!searchQuery && !selectedChain && !isLoadingCoinGecko && (
               <div className="bg-yellow-400/10 border border-yellow-400/30 rounded-lg p-3 mb-3">
                 <p className="text-yellow-400 text-xs">
-                  💡 <strong>Tip:</strong> Search for ANY token listed on CoinGecko (e.g., "TWC", "PEPE", "SHIB")
+                  💡 <strong>Tip:</strong> Search for ANY token listed on CoinGecko (e.g., &ldquo;TWC&rdquo;, &ldquo;PEPE&rdquo;, &ldquo;SHIB&rdquo;)
                 </p>
                 <p className="text-gray-400 text-xs mt-1">
                   Real-time search covers 10,000+ tokens across 50+ blockchains
@@ -685,7 +685,7 @@ export function TokenSelectionModal({
                   </div>
                 ))}
                 <p className="text-center text-gray-400 text-sm mt-2">
-                  {isLoadingCoinGecko && searchQuery && `🔍 Searching CoinGecko for "${searchQuery}"...`}
+                  {isLoadingCoinGecko && searchQuery && `🔍 Searching CoinGecko for ${searchQuery}...`}
                   {isLoadingCoinGecko && !searchQuery && "Loading CoinGecko tokens..."}
                   {isLoadingTokens && selectedChain && `Loading ${CHAINS.find((c) => c.id === selectedChain)?.name} tokens...`}
                 </p>
@@ -704,7 +704,7 @@ export function TokenSelectionModal({
             {/* Show message if search returned no results */}
             {searchQuery && searchQuery.length >= 2 && filteredTokens.length === 0 && !isLoadingCoinGecko && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-3 text-center">
-                <p className="text-red-400 font-medium">No tokens found for "{searchQuery}"</p>
+                <p className="text-red-400 font-medium">No tokens found for &ldquo;{searchQuery}&rdquo;</p>
                 <p className="text-gray-400 text-xs mt-1">
                   Try: Different spelling, token symbol, or check CoinGecko.com
                 </p>
@@ -733,8 +733,8 @@ export function TokenSelectionModal({
           address={token.address}
           chainId={token.chainId}
           chainName={token.chainName}
-          tokenId={token.id}
-          logoURI={token.logoURI}
+          tokenId={'id' in token ? token.id : undefined}
+          logoURI={'logoURI' in token ? token.logoURI : undefined}
           className="w-full h-full rounded-full"
           size={32}
         />
@@ -762,8 +762,8 @@ export function TokenSelectionModal({
       </div>
     </div>
     <div className="text-right">
-      <div className="text-white font-medium">{token.usdValue || "$0.00"}</div>
-      <div className="text-gray-400 text-sm">{token.balance || "0"}</div>
+      <div className="text-white font-medium">{'usdValue' in token ? token.usdValue : "$0.00"}</div>
+      <div className="text-gray-400 text-sm">{'balance' in token ? token.balance : "0"}</div>
     </div>
   </div>
 ))}
@@ -946,8 +946,8 @@ export function TokenSelectionModal({
               address={token.address}
               chainId={token.chainId}
               chainName={token.chainName}
-              tokenId={token.id}
-              logoURI={token.logoURI}
+              tokenId={'id' in token ? token.id : undefined}
+              logoURI={'logoURI' in token ? token.logoURI : undefined}
               className="w-full h-full rounded-full"
               size={32}
             />

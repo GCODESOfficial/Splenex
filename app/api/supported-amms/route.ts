@@ -32,6 +32,7 @@ async function getSupportedAMMs() {
 
     // Combine and format AMMs
     const formattedAMMs = [
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ...dexs.map((dex: any) => ({
         name: dex.name,
         key: dex.key,
@@ -39,6 +40,7 @@ async function getSupportedAMMs() {
         isActive: true,
         type: "DEX",
       })),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ...bridges.map((bridge: any) => ({
         name: bridge.name,
         key: bridge.key,

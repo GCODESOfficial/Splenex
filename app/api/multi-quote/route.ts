@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       slippage,
     });
 
-    if (!result.success) {
+    if (!result.success || !result.data) {
       console.log("[Multi-Quote API] ❌ No quotes available");
       return NextResponse.json(result, { status: 404 });
     }

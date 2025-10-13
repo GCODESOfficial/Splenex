@@ -11,6 +11,7 @@ const IS_DEV = process.env.NODE_ENV === 'development';
 /**
  * Sanitize sensitive data before logging
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function sanitize(data: any): any {
   if (typeof data === 'string') {
     // Mask wallet addresses (0x...)
@@ -22,6 +23,7 @@ function sanitize(data: any): any {
   }
   
   if (typeof data === 'object' && data !== null) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sanitized: any = Array.isArray(data) ? [] : {};
     for (const key in data) {
       // Remove sensitive keys
@@ -46,6 +48,7 @@ class SecureLogger {
   /**
    * Development-only logs (completely disabled in production)
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   dev(...args: any[]) {
     if (IS_DEV) {
       console.log('[DEV]', ...args);
@@ -55,6 +58,7 @@ class SecureLogger {
   /**
    * Info logs (disabled in production)
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   info(...args: any[]) {
     if (IS_DEV) {
       console.log('[INFO]', ...args);
@@ -64,6 +68,7 @@ class SecureLogger {
   /**
    * Warning logs (sanitized in production)
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   warn(...args: any[]) {
     if (IS_PRODUCTION) {
       console.warn('[WARN]', ...args.map(sanitize));
@@ -75,6 +80,7 @@ class SecureLogger {
   /**
    * Error logs (always shown, but sanitized in production)
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error(...args: any[]) {
     if (IS_PRODUCTION) {
       console.error('[ERROR]', ...args.map(sanitize));
@@ -86,6 +92,7 @@ class SecureLogger {
   /**
    * Success logs (disabled in production)
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   success(...args: any[]) {
     if (IS_DEV) {
       console.log('[SUCCESS]', ...args);
@@ -95,6 +102,7 @@ class SecureLogger {
   /**
    * Security logs (always enabled, highly sanitized)
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   security(message: string, details?: any) {
     const timestamp = new Date().toISOString();
     console.warn(`[SECURITY ${timestamp}]`, message, IS_PRODUCTION && details ? sanitize(details) : details);
@@ -117,10 +125,12 @@ export function disableConsoleInProduction() {
     const originalError = console.error;
     const originalWarn = console.warn;
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     console.error = (...args: any[]) => {
       originalError(...args.map(sanitize));
     };
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     console.warn = (...args: any[]) => {
       originalWarn(...args.map(sanitize));
     };

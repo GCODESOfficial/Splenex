@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
     console.log(`[Search API] ✅ Found ${coins.length} tokens for "${query}"`);
 
     // For each coin, fetch platform data with delays to avoid rate limits
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tokensWithPlatforms: any[] = [];
     
     for (let i = 0; i < Math.min(coins.length, 20); i++) {
@@ -97,6 +98,7 @@ export async function GET(request: NextRequest) {
     const validTokens = tokensWithPlatforms;
 
     // Format tokens for all available chains
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const formattedTokens: any[] = [];
     const PLATFORM_TO_CHAIN: { [key: string]: { chainId: number; chainName: string } } = {
       "ethereum": { chainId: 1, chainName: "Ethereum" },

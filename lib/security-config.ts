@@ -60,6 +60,7 @@ export const SECURITY_CONFIG = {
 /**
  * Sanitize data for logging
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function sanitizeForLogging(data: any): any {
   if (!SECURITY_CONFIG.LOGGING.SANITIZE_ADDRESSES && !SECURITY_CONFIG.LOGGING.SANITIZE_TX_HASHES) {
     return data;
@@ -89,6 +90,7 @@ export function sanitizeForLogging(data: any): any {
   }
   
   if (typeof data === 'object' && data !== null) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sanitized: any = Array.isArray(data) ? [] : {};
     for (const key in data) {
       if (['privateKey', 'apiKey', 'secret', 'password', 'mnemonic', 'seed'].includes(key.toLowerCase())) {
@@ -113,6 +115,7 @@ export function containsSensitiveData(str: string): boolean {
 /**
  * Validate input data for security
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function validateInput(input: any, type: 'address' | 'amount' | 'chainId'): boolean {
   switch (type) {
     case 'address':
