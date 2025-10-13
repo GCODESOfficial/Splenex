@@ -7,13 +7,15 @@ import { useEffect, useState } from "react"
 import { getChains } from "@lifi/sdk"
 
 export default function ComingSoon() {
- const [chains, setChains] = useState<any[]>([])
+  const [chains, setChains] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function fetchChains() {
       try {
+        // Fetch all supported chains from LiFi (includes chains from all aggregators)
         const supportedChains = await getChains()
+        console.log(`[ComingSoon] ✅ Loaded ${supportedChains.length} chains`)
         setChains(supportedChains)
       } catch (error) {
         console.error("Failed to fetch chains:", error)

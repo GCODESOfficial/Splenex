@@ -17,31 +17,43 @@ import { getChains, getTools } from "@lifi/sdk";
 interface Amm {
   key: string;
   name: string;
-  logoURI: string;
-  supportedChains: number[];
+  logoURI?: string;
+  logo?: string;
+  supportedChains?: number[];
+  type?: string;
 }
 
 export default function Page() {
   const [chains, setChains] = useState<any[]>([]);
- const [amms, setAmms] = useState<Amm[]>([]);
+  const [amms, setAmms] = useState<Amm[]>([]);
   const { totalVolume, dailyData } = useSwapVolume();
   const [activeRange, setActiveRange] = useState("All Time");
 
- useEffect(() => {
-  async function fetchData() {
-    try {
-      const supportedChains = await getChains();
-      setChains(supportedChains);
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        // Fetch chains from LiFi (includes chains from all integrated aggregators)
+        const supportedChains = await getChains();
+        console.log(`[Overview] ✅ Loaded ${supportedChains.length} chains from all aggregators`);
+        setChains(supportedChains);
 
-      const tools = await getTools();
-      // Save full AMM objects, not just names
-      setAmms(tools.exchanges);
-    } catch (error) {
-      console.error("Failed to fetch network/AMM data:", error);
+        // Fetch all AMMs from custom API (includes LiFi + additional integrations like PancakeSwap)
+        const ammsResponse = await fetch('/api/supported-amms');
+        if (ammsResponse.ok) {
+          const ammsData = await ammsResponse.json();
+          console.log(`[Overview] ✅ Loaded ${ammsData.length} AMMs (including PancakeSwap)`);
+          setAmms(ammsData);
+        } else {
+          // Fallback to LiFi tools if custom API fails
+          const tools = await getTools();
+          setAmms(tools.exchanges);
+        }
+      } catch (error) {
+        console.error("Failed to fetch network/AMM data:", error);
+      }
     }
-  }
-  fetchData();
-}, []);
+    fetchData();
+  }, []);
 
   // ✅ Filter data based on active time range
   const filteredData = useMemo(() => {
@@ -106,7 +118,7 @@ export default function Page() {
           <p className="text-2xl font-bold">
             ${totalVolume.toLocaleString()}
           </p>
-          <p className="text-sm text-[#FCD404]">Trading Volume (All Time)</p>
+          <p className="text-sm text-[#FCD404]">Total Trade Done</p>
         </div>
         <div className="bg-[#0C0C0C] p-6 text-center">
           <p className="text-2xl font-bold">--</p>
@@ -186,7 +198,7 @@ export default function Page() {
 
         {/* Line Chart */}
         <div className="bg-[#0C0C0C] p-6">
-          <h3 className="mb-4">Trading Volume Analysis</h3>
+          <h3 className="mb-4">Total Trade Analysis</h3>
           <div className="w-full h-60 bg-black border border-gray-800 flex items-center justify-center">
             {filteredData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -229,33 +241,36 @@ export default function Page() {
       </div>
 
      {/* AMM Section */}
-<h2 className="text-sm md:text-xl mb-3">Automated Market Makers Section</h2>
+<h2 className="text-sm md:text-xl mb-3">Automated Market Makers & DEXs</h2>
 <p className="text-xs md:text-base text-gray-400 mb-4">
-  Splenex AMMs ensure optimal pricing and deep liquidity across chains so every trade is fast, fair, and efficient.
+  Splenex integrates {amms.length}+ AMMs including Uniswap, PancakeSwap, SushiSwap, Curve, and more to ensure optimal pricing and deep liquidity across all chains.
 </p>
 
 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:w-7/12">
   {amms.length > 0 ? (
-    amms.map((amm: any) => (
+    amms.slice(0, 20).map((amm: Amm) => (
       <div
-        key={amm.id || amm.name}
-        className="bg-[#0C0C0C] px-4 py-3 flex items-center gap-2 "
+        key={amm.key || amm.name}
+        className="bg-[#0C0C0C] px-4 py-3 flex items-center gap-2"
       >
-        {amm.logoURI ? (
+        {(amm.logoURI || amm.logo) ? (
           <Image
-            src={amm.logoURI}
-            alt={amm.name || amm.id}
+            src={amm.logoURI || amm.logo || ''}
+            alt={amm.name}
             width={20}
             height={20}
             className="rounded-full"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
           />
         ) : (
           <div className="w-5 h-5 bg-[#1A1A1A] flex items-center justify-center text-gray-500 text-xs">
             ⚙️
           </div>
         )}
-        <span className="md:text-sm text-xs capitalize text-gray-200">
-          {amm.name || amm.id}
+        <span className="md:text-sm text-xs text-gray-200">
+          {amm.name}
         </span>
       </div>
     ))
@@ -263,6 +278,12 @@ export default function Page() {
     <p className="text-gray-500 text-sm">Loading AMMs...</p>
   )}
 </div>
+
+{amms.length > 20 && (
+  <p className="text-xs text-gray-500 mt-2">
+    + {amms.length - 20} more AMMs/bridges available
+  </p>
+)}
 
 
       {/* Infinite Scroll Animation */}

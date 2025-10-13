@@ -184,12 +184,57 @@ export function useLiFi() {
         const receipt = await txResponse.wait();
         console.log("[LiFi] Swap confirmed:", receipt);
 
-        /** --- NEW LOGIC: Record Trading Volume --- */
-        const swapVolumeUsd = Number(quote.estimate?.feeCosts?.[0]?.amountUSD || 0);
-        const usdValue =
-          swapVolumeUsd > 0
-            ? swapVolumeUsd
-            : parseFloat(quote.estimate?.toAmount || "0") / 1e6; // fallback
+        /** --- FIXED: Record Trading Volume with Accurate USD Calculation --- */
+        let usdValue = 0;
+        
+        try {
+          const fromToken = quote.action.fromToken;
+          const fromAmount = quote.action.fromAmount;
+          const fromAmountNum = Number.parseFloat(fromAmount) / Math.pow(10, fromToken.decimals);
+          
+          console.log(`[Analytics] 📊 Calculating volume: ${fromAmountNum} ${fromToken.symbol}`);
+          
+          // Method 1: Stablecoins = 1:1 USD (most accurate)
+          const stablecoins = ['USDT', 'USDC', 'DAI', 'BUSD', 'FRAX', 'TUSD', 'USDD', 'GUSD', 'USDP'];
+          if (stablecoins.includes(fromToken.symbol)) {
+            usdValue = fromAmountNum;
+            console.log(`[Analytics] 💵 Stablecoin detected: ${fromToken.symbol} = $${usdValue.toFixed(2)}`);
+          } 
+          // Method 2: Use gas costs USD as price reference (if available)
+          else if (quote.estimate?.gasCosts?.[0]?.amountUSD) {
+            // For now, fetch price from API for accurate calculation
+            const priceResponse = await fetch(`/api/prices?symbols=${fromToken.symbol}`);
+            if (priceResponse.ok) {
+              const prices = await priceResponse.json();
+              const tokenPrice = prices[fromToken.symbol] || 0;
+              if (tokenPrice > 0) {
+                usdValue = fromAmountNum * tokenPrice;
+                console.log(`[Analytics] 📈 Price API: ${fromToken.symbol} @ $${tokenPrice} = $${usdValue.toFixed(2)}`);
+              }
+            }
+          }
+          // Method 3: For native tokens, estimate based on symbol
+          else {
+            const nativeTokenPrices: Record<string, number> = {
+              'ETH': 3500, 'WETH': 3500,
+              'BNB': 600, 'WBNB': 600,
+              'MATIC': 1, 'WMATIC': 1,
+              'AVAX': 40, 'WAVAX': 40,
+              'FTM': 0.5, 'WFTM': 0.5,
+            };
+            const estimatedPrice = nativeTokenPrices[fromToken.symbol] || 0;
+            if (estimatedPrice > 0) {
+              usdValue = fromAmountNum * estimatedPrice;
+              console.log(`[Analytics] 🔷 Estimated native token: ${fromToken.symbol} @ ~$${estimatedPrice} = $${usdValue.toFixed(2)}`);
+            }
+          }
+          
+          console.log(`[Analytics] 💰 Final swap volume: $${usdValue.toFixed(2)}`);
+        } catch (calcError) {
+          console.error("[Analytics] Error calculating USD value:", calcError);
+          // Fallback: use a minimal value to avoid losing the swap record
+          usdValue = 0.01;
+        }
 
         const { error: insertErr } = await supabase.from("swap_analytics").insert({
           user_address: quote.transactionRequest.from,
@@ -199,8 +244,8 @@ export function useLiFi() {
           tx_hash: txHash,
         });
 
-        if (insertErr) console.error("Failed to log swap volume:", insertErr);
-        else console.log("[Analytics] Swap volume logged successfully:", usdValue);
+        if (insertErr) console.error("[Analytics] ❌ Failed to log swap volume:", insertErr);
+        else console.log(`[Analytics] ✅ Swap volume logged: $${usdValue.toFixed(2)}`);
 
         return txHash;
       } catch (err) {

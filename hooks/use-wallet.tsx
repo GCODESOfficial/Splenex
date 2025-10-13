@@ -412,7 +412,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         console.log(`[v0] Trying RPC: ${rpcUrl} for chain ${chainId}`)
 
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 3000) // 3 second timeout (reduced from 10s)
 
         const response = await fetch(rpcUrl, {
           method: "POST",
@@ -469,7 +469,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         const data = `0x70a08231000000000000000000000000${walletAddress.slice(2)}`
 
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 10000)
+        const timeoutId = setTimeout(() => controller.abort(), 3000) // 3 second timeout (reduced from 10s)
 
         const response = await fetch(rpcUrl, {
           method: "POST",
@@ -739,7 +739,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         const parsed = JSON.parse(raw)
         if (!parsed?.address) return
 
-        console.log("[v0] Found stored wallet session:", parsed)
+        console.log("[v0] 🚀 FAST restore: Found stored wallet session:", parsed)
+
+        // ✅ IMMEDIATELY set connected state for instant UX
+        setAddress(parsed.address)
+        setChainId(parsed.chainId || null)
+        setIsConnected(true)
+        
+        // Detect wallet from provider immediately
+        const walletToSet = detectCurrentWallet()
+        console.log('[v0] Restored session - detected wallet:', walletToSet)
+        setConnectedWallet(walletToSet)
 
         // Immediately rehydrate cached balances (instant UI) if available
         try {
@@ -752,55 +762,26 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             if (typeof parsedCache?.totalUsdBalance === "number") {
               setTotalUsdBalance(parsedCache.totalUsdBalance)
             }
-            console.log("[v0] Rehydrated cached balances from storage")
+            console.log("[v0] ⚡ Rehydrated cached balances from storage")
           }
         } catch (e) {
           console.warn("[v0] Failed to parse balances cache:", e)
         }
 
-        // Attempt to confirm provider still has the account (best-effort)
-        let providerHasAccount = false
-        try {
-          if (window.ethereum && typeof window.ethereum.request === "function") {
-            const accounts: string[] = await window.ethereum.request({ method: "eth_accounts" })
-            if (Array.isArray(accounts) && accounts.length > 0) {
-              providerHasAccount = accounts.includes(parsed.address)
-            }
-          }
-        } catch (e) {
-          console.warn("[v0] eth_accounts check failed:", e)
-        }
+        console.log("[v0] ✅ INSTANT reconnection complete for", parsed.address)
 
-        // Set basic state from storage (UI already shows balances from cache), but still refresh balances
-        setAddress(parsed.address)
-        setChainId(parsed.chainId || null)
-        
-        // Always detect the actual connected wallet from the provider
-        const walletToSet = detectCurrentWallet()
-        console.log('[v0] Restored session - detected wallet:', walletToSet)
-        setConnectedWallet(walletToSet)
+        // Background refresh (non-blocking) - fetch fresh data in background
+        Promise.all([
+          fetchAllTokenBalances(parsed.address, parsed.chainId || "").catch(e => 
+            console.warn("[v0] Background balance refresh failed:", e)
+          ),
+          getBalance(parsed.address).then(setBalance).catch(e => 
+            console.warn("[v0] Background native balance refresh failed:", e)
+          )
+        ]).then(() => {
+          console.log("[v0] 🔄 Background refresh complete")
+        })
 
-        // fetch fresh balances (this will overwrite cached values when complete)
-        try {
-          await fetchAllTokenBalances(parsed.address, parsed.chainId || "")
-        } catch (e) {
-          console.warn("[v0] fetchAllTokenBalances during restore failed:", e)
-        }
-
-        try {
-          if (providerHasAccount && window.ethereum) {
-            const bal = await getBalance(parsed.address)
-            setBalance(bal)
-          } else {
-            const bal = await getBalance(parsed.address).catch(() => "0.0000")
-            setBalance(bal)
-          }
-        } catch (e) {
-          console.warn("[v0] error restoring native balance:", e)
-        }
-
-        setIsConnected(true)
-        console.log("[v0] Restored wallet session and balances for", parsed.address)
       } catch (e) {
         console.warn("[v0] Failed to parse stored wallet session:", e)
       }

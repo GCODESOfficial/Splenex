@@ -40,6 +40,7 @@ export async function getLiFiQuote(request: LiFiQuoteRequest) {
     const slippageDecimal = request.slippage ? (request.slippage / 100).toString() : "0.005";
     console.log("[v0] Server: Slippage sent to LiFi:", slippageDecimal);
 
+    // Build params - ENABLE ALL EXCHANGES AND BRIDGES for maximum routing options!
     const params = new URLSearchParams({
       fromChain: request.fromChain.toString(),
       toChain: request.toChain.toString(),
@@ -50,13 +51,20 @@ export async function getLiFiQuote(request: LiFiQuoteRequest) {
       ...(request.toAddress && { toAddress: request.toAddress }),
       slippage: slippageDecimal,
       ...(request.order && { order: request.order }),
+      // Don't restrict bridges/exchanges unless explicitly requested
       ...(request.allowBridges && { allowBridges: request.allowBridges.join(",") }),
       ...(request.denyBridges && { denyBridges: request.denyBridges.join(",") }),
       ...(request.preferBridges && { preferBridges: request.preferBridges.join(",") }),
       ...(request.allowExchanges && { allowExchanges: request.allowExchanges.join(",") }),
       ...(request.denyExchanges && { denyExchanges: request.denyExchanges.join(",") }),
       ...(request.preferExchanges && { preferExchanges: request.preferExchanges.join(",") }),
+      // IMPORTANT: Enable all route types for maximum compatibility
+      integrator: "splenex-dex",
+      allowSwitchChain: "true",
+      maxPriceImpact: "0.5", // Allow up to 50% price impact for illiquid pairs
     })
+    
+    console.log("[v0] Server: ⚡ Using ALL available AMMs and bridges for routing")
     
     console.log("[v0] Server: Full LiFi API URL:", `${LIFI_API_BASE}/quote?${params.toString()}`)
 

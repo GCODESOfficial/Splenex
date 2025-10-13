@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from "react";
 import { useWallet } from "@/hooks/use-wallet";
+import { useSecondaryWallet } from "@/hooks/use-secondary-wallet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowUpDown, Eye, Settings, ChevronDown, Zap } from "lucide-react";
@@ -26,6 +27,8 @@ import { Dialog, DialogContent, DialogTitle } from "@radix-ui/react-dialog";
 import { DialogHeader } from "./ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { OngoingLimitOrders } from "./ongoing-limit-orders";
+import { useLimitOrderMonitor } from "@/hooks/use-limit-order-monitor";
 
 interface Token {
   symbol: string;
@@ -37,7 +40,32 @@ interface Token {
   usdValue?: string;
   icon?: string;
   decimals?: number;
+  logoURI?: string;
+  id?: string;
 }
+
+// Common token logo URLs (high quality, fast loading)
+const TOKEN_LOGOS: { [symbol: string]: string } = {
+  "ETH": "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png",
+  "BNB": "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/bnb.png",
+  "USDC": "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/usdc.png",
+  "USDT": "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/usdt.png",
+  "DAI": "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/dai.png",
+  "WBTC": "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/btc.png",
+  "MATIC": "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/matic.png",
+  "AVAX": "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/avax.png",
+  "FTM": "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/ftm.png",
+  "ARB": "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/arb.png",
+  "OP": "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/op.png",
+};
+
+// Helper to ensure token has logoURI
+const ensureTokenLogo = (token: Token): Token => {
+  if (!token.logoURI && TOKEN_LOGOS[token.symbol]) {
+    return { ...token, logoURI: TOKEN_LOGOS[token.symbol] };
+  }
+  return token;
+};
 
 const DEFAULT_FROM_TOKEN: Token = {
   symbol: "ETH",
@@ -45,6 +73,8 @@ const DEFAULT_FROM_TOKEN: Token = {
   address: "0x0000000000000000000000000000000000000000",
   chainId: 1,
   chainName: "Ethereum",
+  logoURI: "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png",
+  id: "ethereum",
 };
 
 const DEFAULT_TO_TOKEN: Token = {
@@ -54,11 +84,18 @@ const DEFAULT_TO_TOKEN: Token = {
   chainId: 1,
   chainName: "Ethereum",
   decimals: 6,
+  logoURI: "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/usdc.png",
+  id: "usd-coin",
 };
 
 export function SimpleSwapInterface() {
   const { address, isConnected, balance, isConnecting, connectingWallet, connectedWallet, switchNetwork, chainId, refreshBalances, tokenBalances } =
     useWallet();
+  const { 
+    secondaryAddress, 
+    secondaryWalletType, 
+    isSecondaryConnected 
+  } = useSecondaryWallet();
   const {
     getQuote,
     executeSwap,
@@ -87,6 +124,7 @@ export function SimpleSwapInterface() {
   const [swapWalletType, setSwapWalletType] = useState<"from" | "to" | null>(
     null
   );
+  const [supportedChainsCount, setSupportedChainsCount] = useState<number>(0);
 
   // original modal flag
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
@@ -99,6 +137,7 @@ export function SimpleSwapInterface() {
   const [isSlippageModalOpen, setIsSlippageModalOpen] = useState(false);
   const [slippageTolerance, setSlippageTolerance] = useState(0.5);
   const [limitOrders, setLimitOrders] = useState<any[]>([]);
+  const [ordersRefreshKey, setOrdersRefreshKey] = useState(0);
   const [isApeModeModalOpen, setIsApeModeModalOpen] = useState(false);
   const [apeModeConfig, setApeModeConfig] = useState<ApeModeConfig | null>(
     null
@@ -114,20 +153,43 @@ export function SimpleSwapInterface() {
   // Swap processing state
   const [isSwapping, setIsSwapping] = useState(false);
 
-  // Sync wallet addresses with connected wallet
+  // 🚀 AUTO-EXECUTE LIMIT ORDERS - Client-side monitor
+  const { isMonitoring, lastCheck } = useLimitOrderMonitor(address, isConnected);
+
+  // Request notification permission on first connection
   useEffect(() => {
+    if (isConnected && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().then(permission => {
+        console.log('[LimitOrders] Notification permission:', permission);
+      });
+    }
+  }, [isConnected]);
+
+  // Sync wallet addresses with connected wallets
+  useEffect(() => {
+    // FROM wallet: always use primary wallet
     if (isConnected && address) {
-      // Update both addresses when wallet connects/changes
       setFromWalletAddress(address);
-      setToWalletAddress(address);
-      console.log("[Swap] 🔄 Wallet addresses synced:", address);
+      console.log("[Swap] 🔄 FROM wallet synced (primary):", address);
     } else if (!isConnected) {
-      // Clear addresses when wallet disconnects
       setFromWalletAddress(undefined);
-      setToWalletAddress(undefined);
-      console.log("[Swap] 🔌 Wallet disconnected, addresses cleared");
+      console.log("[Swap] 🔌 FROM wallet disconnected");
     }
   }, [isConnected, address]);
+
+  useEffect(() => {
+    // TO wallet: use secondary wallet if connected, otherwise use primary
+    if (isSecondaryConnected && secondaryAddress) {
+      setToWalletAddress(secondaryAddress);
+      console.log("[Swap] 🔄 TO wallet synced (secondary):", secondaryAddress);
+    } else if (isConnected && address) {
+      setToWalletAddress(address);
+      console.log("[Swap] 🔄 TO wallet synced (primary fallback):", address);
+    } else {
+      setToWalletAddress(undefined);
+      console.log("[Swap] 🔌 TO wallet disconnected");
+    }
+  }, [isSecondaryConnected, secondaryAddress, isConnected, address]);
 
   // Update default tokens with actual wallet balances
   useEffect(() => {
@@ -175,6 +237,21 @@ export function SimpleSwapInterface() {
       }
     }
   }, [isConnected, tokenBalances, fromToken.symbol, fromToken.chainName, toToken.symbol, toToken.chainName, toToken.address]);
+
+  // Fetch supported chains count on mount
+  useEffect(() => {
+    const fetchChainsCount = async () => {
+      try {
+        const chains = await getSupportedChains();
+        setSupportedChainsCount(chains.length);
+        console.log(`[Swap] ✅ Loaded ${chains.length} supported networks`);
+      } catch (error) {
+        console.error('[Swap] Failed to fetch chains:', error);
+        setSupportedChainsCount(0);
+      }
+    };
+    fetchChainsCount();
+  }, [getSupportedChains]);
 
   const handleSwapTokens = () => {
     const tempToken = fromToken;
@@ -250,11 +327,11 @@ export function SimpleSwapInterface() {
 
     const minimumAmounts: { [key: string]: number } = {
       ETH: 0.001,
-      USDC: 5,
+      USDC: 1,
       USDT: 1,
-      DAI: 5,
+      DAI: 1,
       BNB: 0.001,
-      MATIC: 5,
+      MATIC: 1,
     };
 
     const minAmount = minimumAmounts[token.symbol] || 1;
@@ -266,6 +343,118 @@ export function SimpleSwapInterface() {
     }
 
     return { isValid: true };
+  };
+
+  const handleDirectTransfer = async (
+    token: Token,
+    amount: string,
+    fromAddress: string,
+    toAddress: string
+  ) => {
+    try {
+      if (typeof window === "undefined" || !window.ethereum) {
+        throw new Error("No ethereum provider found");
+      }
+
+      const decimals = token.decimals || (token.symbol === "USDC" ? 6 : token.symbol === "USDT" ? 6 : token.symbol === "WBTC" ? 8 : 18);
+      const amountWei = (Number.parseFloat(amount) * Math.pow(10, decimals)).toFixed(0);
+
+      console.log(`[Transfer] 💸 Executing direct transfer: ${amount} ${token.symbol} to ${toAddress}`);
+
+      // Check if it's a native token (ETH, BNB, MATIC)
+      const isNativeToken = token.address === "0x0000000000000000000000000000000000000000" || 
+                            ["ETH", "BNB", "MATIC"].includes(token.symbol);
+
+      let txHash: string;
+
+      if (isNativeToken) {
+        // Native token transfer
+        console.log("[Transfer] 💎 Native token transfer");
+        txHash = await window.ethereum.request({
+          method: "eth_sendTransaction",
+          params: [{
+            from: fromAddress,
+            to: toAddress,
+            value: `0x${BigInt(amountWei).toString(16)}`,
+          }],
+        });
+      } else {
+        // ERC20 token transfer
+        console.log("[Transfer] 🪙 ERC20 token transfer");
+        
+        // ERC20 transfer(address to, uint256 amount)
+        const transferData = 
+          "0xa9059cbb" + 
+          toAddress.slice(2).padStart(64, "0") + 
+          BigInt(amountWei).toString(16).padStart(64, "0");
+
+        txHash = await window.ethereum.request({
+          method: "eth_sendTransaction",
+          params: [{
+            from: fromAddress,
+            to: token.address,
+            data: transferData,
+            value: "0x0",
+          }],
+        });
+      }
+
+      console.log("[Transfer] 📝 Transaction sent:", txHash);
+
+      toast({
+        title: "Transfer Submitted",
+        description: `Transaction: ${txHash.substring(0, 10)}... Waiting for confirmation...`,
+        duration: 5000,
+      });
+
+      // Wait for confirmation
+      let receipt = null;
+      let attempts = 0;
+
+      while (!receipt && attempts < 60) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        try {
+          receipt = await window.ethereum.request({
+            method: "eth_getTransactionReceipt",
+            params: [txHash],
+          });
+          attempts++;
+        } catch (error) {
+          attempts++;
+        }
+      }
+
+      if (receipt) {
+        const status = typeof receipt.status === "string" ? parseInt(receipt.status, 16) : receipt.status;
+
+        if (status === 0) {
+          throw new Error("Transaction failed");
+        }
+
+        console.log("[Transfer] ✅ Transfer confirmed!");
+
+        toast({
+          title: "Transfer Completed!",
+          description: `${amount} ${token.symbol} sent to ${toAddress.slice(0, 6)}...${toAddress.slice(-4)}`,
+          duration: 5000,
+        });
+
+        await refreshBalances();
+        setFromAmount("");
+        setToAmount("");
+      }
+    } catch (error) {
+      console.error("[Transfer] ❌ Error:", error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+
+      toast({
+        title: "Transfer Failed",
+        description: errMsg.includes("rejected") ? "Transfer cancelled" : errMsg,
+        variant: "destructive",
+        duration: 5000,
+      });
+      throw error;
+    }
   };
 
   const handleSwap = async () => {
@@ -424,6 +613,127 @@ export function SimpleSwapInterface() {
         ? "0x0000000000000000000000000000000000000000"
         : toToken.address;
 
+      // ✅ Detect same-token transfer AFTER normalization
+      console.log("[v0] 🔍 RAW Token Data:");
+      console.log("  FROM:", { symbol: fromToken.symbol, address: fromToken.address, chainId: fromToken.chainId });
+      console.log("  TO:", { symbol: toToken.symbol, address: toToken.address, chainId: toToken.chainId });
+      console.log("  FROM Wallet:", fromWalletAddress);
+      console.log("  TO Wallet:", toWalletAddress);
+
+      const addressMatch = safeFromToken.toLowerCase() === safeToToken.toLowerCase();
+      const symbolMatch = fromToken.symbol === toToken.symbol;
+      const isSameToken = addressMatch || symbolMatch;
+      const isSameChain = fromChain === toChain;
+      const isWalletToWallet = fromWalletAddress.toLowerCase() !== toWalletAddress.toLowerCase();
+
+      console.log("[v0] 🔍 Transfer Detection (AFTER normalization):");
+      console.log("  - FROM Token:", fromToken.symbol, "→", safeFromToken);
+      console.log("  - TO Token:", toToken.symbol, "→", safeToToken);
+      console.log("  - FROM Chain:", fromChain, "TO Chain:", toChain);
+      console.log("  - Address Match:", addressMatch, `(${safeFromToken.toLowerCase()} === ${safeToToken.toLowerCase()})`);
+      console.log("  - Symbol Match:", symbolMatch, `(${fromToken.symbol} === ${toToken.symbol})`);
+      console.log("  - Same Token:", isSameToken);
+      console.log("  - Same Chain:", isSameChain);
+      console.log("  - Wallet-to-Wallet:", isWalletToWallet);
+      console.log("  - ALL CONDITIONS:", { isSameToken, isSameChain, isWalletToWallet });
+
+      if (isSameToken && isSameChain && isWalletToWallet) {
+        console.log("[v0] 💸 ✅ DIRECT TRANSFER TRIGGERED!");
+        console.log("[v0] 📍 Executing direct transfer instead of swap");
+        
+        toast({
+          title: "Direct Transfer",
+          description: `Transferring ${fromAmount} ${fromToken.symbol} between wallets...`,
+          duration: 3000,
+        });
+
+        try {
+          await handleDirectTransfer(fromToken, fromAmount, fromWalletAddress, toWalletAddress);
+        } finally {
+          setIsSwapping(false);
+        }
+        return;
+      }
+
+      console.log("[v0] ❌ NOT a direct transfer - conditions not met");
+      console.log("[v0] ℹ️ Proceeding with multi-aggregator quote (LiFi, 1inch, 0x, Paraswap, PancakeSwap)...");
+
+      // Try multi-aggregator system first (best quotes from multiple sources)
+      let lifiQuote: any = null;
+      let quoteProvider = "unknown";
+      
+      try {
+        console.log("[v0] 🎯 Fetching quote from multiple aggregators...");
+        
+        const params = new URLSearchParams({
+          fromChain: fromChain.toString(),
+          toChain: toChain.toString(),
+          fromToken: safeFromToken,
+          toToken: safeToToken,
+          fromAmount: fromAmountWei,
+          fromAddress: fromWalletAddress,
+          ...(toWalletAddress && { toAddress: toWalletAddress }),
+          slippage: slippageTolerance.toString(),
+        });
+        
+        const multiQuoteResponse = await fetch(`/api/multi-quote?${params}`);
+        
+        console.log(`[v0] Multi-aggregator API response status: ${multiQuoteResponse.status}`);
+        
+        if (multiQuoteResponse.ok) {
+          const multiQuoteResult = await multiQuoteResponse.json();
+          console.log("[v0] Multi-aggregator API result:", multiQuoteResult);
+          
+          if (multiQuoteResult.success && multiQuoteResult.data) {
+            console.log(`[v0] ✅ Multi-aggregator quote received from: ${multiQuoteResult.data.provider.toUpperCase()}`);
+            console.log(`[v0] Checked ${multiQuoteResult.totalProviders} provider(s)`);
+            
+            // Convert unified quote to LiFi-compatible format
+            quoteProvider = multiQuoteResult.data.provider;
+            lifiQuote = {
+              type: "lifi",
+              tool: multiQuoteResult.data.provider,
+              estimate: {
+                toAmount: multiQuoteResult.data.toAmount,
+                toAmountMin: multiQuoteResult.data.toAmountMin,
+                gasCosts: [{
+                  estimate: multiQuoteResult.data.estimatedGas,
+                }],
+              },
+              transactionRequest: multiQuoteResult.data.transactionRequest,
+              action: {
+                fromToken: fromToken,
+                toToken: toToken,
+                fromAmount: fromAmountWei,
+              },
+              _rawQuote: multiQuoteResult.data.route, // Store original quote
+              _provider: multiQuoteResult.data.provider,
+            };
+            
+            if (multiQuoteResult.allQuotes && multiQuoteResult.allQuotes.length > 1) {
+              toast({
+                title: "Best Quote Found! 🎉",
+                description: `Compared ${multiQuoteResult.totalProviders} providers. Using ${quoteProvider.toUpperCase()} for best rate.`,
+                duration: 3000,
+              });
+            }
+          } else {
+            console.log("[v0] ⚠️ Multi-aggregator API returned unsuccessful result:", multiQuoteResult);
+            console.log("[v0] ⚠️ Multi-aggregator failed, falling back to LiFi only...");
+          }
+        } else {
+          const errorText = await multiQuoteResponse.text();
+          console.log(`[v0] ⚠️ Multi-aggregator API error (${multiQuoteResponse.status}):`, errorText);
+          console.log("[v0] ⚠️ Falling back to LiFi only...");
+        }
+      } catch (error) {
+        console.log("[v0] ⚠️ Multi-aggregator error, falling back to LiFi only:", error);
+      }
+      
+      // Fallback to LiFi-only if multi-aggregator failed
+      if (!lifiQuote) {
+        console.log("[v0] 🔵 Trying LiFi only as fallback...");
+
       const quoteRequest = {
         fromChain,
         toChain,
@@ -436,16 +746,91 @@ export function SimpleSwapInterface() {
         order: isBridge ? ("FASTEST" as const) : ("CHEAPEST" as const),
       };
 
-      console.log("[v0] Quote request:", quoteRequest);
-      const lifiQuote = await getQuote(quoteRequest);
+        lifiQuote = await getQuote(quoteRequest);
+        quoteProvider = "lifi";
+      }
+
+      // Last resort: Try direct DEX router as final fallback
+      if (!lifiQuote && fromChain === toChain) {
+        console.log("[v0] 🔧 All aggregators failed. Trying direct DEX router as last resort...");
+        
+        try {
+          const directDexParams = new URLSearchParams({
+            fromChain: fromChain.toString(),
+            toChain: toChain.toString(),
+            fromToken: safeFromToken,
+            toToken: safeToToken,
+            fromAmount: fromAmountWei,
+            fromAddress: fromWalletAddress,
+            slippage: slippageTolerance.toString(),
+          });
+          
+          const directDexResponse = await fetch(`/api/direct-dex-quote?${directDexParams}`);
+          
+          if (directDexResponse.ok) {
+            const directDexResult = await directDexResponse.json();
+            
+            if (directDexResult.success && directDexResult.data) {
+              console.log(`[v0] ✅ Direct DEX quote received from: ${directDexResult.data.provider.toUpperCase()}!`);
+              console.log(`[v0] 🎉 LOW-CAP TOKEN SUPPORT: Found liquidity on direct DEX!`);
+              
+              // Convert to LiFi-compatible format
+              quoteProvider = directDexResult.data.provider;
+              lifiQuote = {
+                type: "direct-dex",
+                tool: directDexResult.data.provider,
+                estimate: {
+                  toAmount: directDexResult.data.toAmount,
+                  toAmountMin: directDexResult.data.toAmountMin,
+                  gasCosts: [{
+                    estimate: directDexResult.data.estimatedGas,
+                  }],
+                },
+                transactionRequest: directDexResult.data.transactionRequest,
+                action: {
+                  fromToken: fromToken,
+                  toToken: toToken,
+                  fromAmount: fromAmountWei,
+                },
+                _rawQuote: directDexResult.data,
+                _provider: "direct-dex",
+              };
+              
+              toast({
+                title: "Route Found via Direct DEX! 🎉",
+                description: `Aggregators couldn't find this pair, but we called ${directDexResult.data.provider.toUpperCase()} router directly! This is a low-liquidity token - use high slippage (20-50%).`,
+                duration: 5000,
+              });
+            }
+          } else {
+            console.log("[v0] Direct DEX also failed - truly no liquidity");
+          }
+        } catch (error) {
+          console.log("[v0] Direct DEX fallback error:", error);
+        }
+      }
 
       if (!lifiQuote) {
+        // Check if this is a low-cap token issue
+        const isLowCapToken = toToken.symbol === "TWC" || fromToken.symbol === "TWC";
+        
         toast({
-          title: "Quote Error",
-          description: "No available route or invalid pair for this swap.",
+          title: "No Routes Available",
+          description: isLowCapToken 
+            ? `${toToken.symbol || fromToken.symbol} is a very low-cap token with extremely low liquidity. Even direct DEX routers couldn't find a route. Check if the token exists on this chain and has any liquidity pools.`
+            : "None of our 5 aggregators AND direct DEX routers could find a route. Token may have zero liquidity, transfer restrictions, or only exists on other chains.",
           variant: "destructive",
-          duration: 4000,
+          duration: 7000,
         });
+        
+        // Log helpful info for low-cap tokens
+        if (isLowCapToken) {
+          console.log("[v0] 💡 Low-cap token detected!");
+          console.log("[v0] 🥞 Try PancakeSwap directly:");
+          console.log(`[v0] https://pancakeswap.finance/swap?outputCurrency=${toToken.address}`);
+          console.log("[v0] Set slippage to 20-50% for low liquidity tokens");
+        }
+        
         return;
       }
 
@@ -551,6 +936,17 @@ export function SimpleSwapInterface() {
               console.log("[v0] Fetching fresh quote after approval...");
               
               try {
+                const quoteRequest = {
+                  fromChain,
+                  toChain,
+                  fromToken: safeFromToken,
+                  toToken: safeToToken,
+                  fromAmount: fromAmountWei,
+                  fromAddress: fromWalletAddress,
+                  toAddress: toWalletAddress,
+                  slippage: slippageTolerance,
+                  order: isBridge ? ("FASTEST" as const) : ("CHEAPEST" as const),
+                };
                 const freshQuote = await getQuote(quoteRequest);
                 
                 if (freshQuote) {
@@ -617,7 +1013,11 @@ export function SimpleSwapInterface() {
       
       if (lifiQuote.estimate?.gasCosts) {
         const gasCosts = lifiQuote.estimate.gasCosts;
-        console.log(`[v0] Estimated gas: ${gasCosts[0]?.estimate || "Unknown"} (${gasCosts[0]?.amountUSD ? `$${gasCosts[0].amountUSD}` : "N/A"})`);
+        const gasEstimate = gasCosts[0]?.estimate || gasCosts[0] || "Unknown";
+        const gasUSD = (gasCosts[0] && typeof gasCosts[0] === 'object' && 'amountUSD' in gasCosts[0]) 
+          ? `$${(gasCosts[0] as any).amountUSD}` 
+          : "N/A";
+        console.log(`[v0] Estimated gas: ${gasEstimate} (${gasUSD})`);
       }
 
       // ✅ Log transaction details before execution
@@ -774,6 +1174,7 @@ export function SimpleSwapInterface() {
         estimatedToAmount: lifiQuote.estimate?.toAmount,
       });
       
+      // Regular spot swap - user pays gas directly (simple and straightforward)
       const txHash = await executeSwap(lifiQuote, signer);
       
       if (txHash) {
@@ -1026,11 +1427,11 @@ export function SimpleSwapInterface() {
       } else {
         const minimumAmounts: { [key: string]: number } = {
           ETH: 0.001,
-          USDC: 5,
-          USDT: 5,
-          DAI: 5,
+          USDC: 1,
+          USDT: 1,
+          DAI: 1,
           BNB: 0.001,
-          MATIC: 5,
+          MATIC: 1,
         };
         const minAmount = minimumAmounts[fromToken.symbol] || 1;
         if (balanceNum >= minAmount) {
@@ -1049,29 +1450,73 @@ export function SimpleSwapInterface() {
 
   const handlePlaceLimitOrder = async (orderData: any) => {
     try {
-      console.log("[v0] Placing limit order:", orderData);
+      console.log("[v0] 📝 Placing limit order with data:", orderData);
+      console.log("[v0] 🔍 Order details:", {
+        fromToken: orderData.fromToken?.symbol,
+        toToken: orderData.toToken?.symbol,
+        fromAmount: orderData.fromAmount,
+        limitRate: orderData.limitRate,
+        walletAddress: orderData.walletAddress,
+      });
 
+      // Save to database
+      const response = await fetch("/api/limit-orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(orderData),
+      });
+
+      console.log("[v0] 📡 API Response status:", response.status);
+      
+      const result = await response.json();
+      console.log("[v0] 📡 API Response data:", result);
+
+      if (!result.success) {
+        console.error("[v0] ❌ Database save failed:", result.error);
+        throw new Error(result.error || "Failed to save limit order");
+      }
+
+      console.log("[v0] ✅ Limit order saved to database!");
+      console.log("[v0] 💾 Order ID:", result.data?.id);
+      console.log("[v0] 📊 Database returned:", result.data);
+
+      // Add to local state
       const newOrder = {
         ...orderData,
-        id: Date.now().toString(),
+        id: result.data.id,
         status: "pending",
         createdAt: new Date().toISOString(),
       };
 
       setLimitOrders((prev) => [...prev, newOrder]);
+      console.log("[v0] ✅ Order added to local state");
+      
+      // Force refresh of ongoing orders component
+      setOrdersRefreshKey(prev => prev + 1);
+      console.log("[v0] 🔄 Triggering order list refresh...");
+      
       toast({
-        title: "Limit Order Placed",
-        description: `Order ID: ${newOrder.id}`,
+        title: "Limit Order Placed! 🎯",
+        description: `Your order will execute automatically when ${orderData.fromToken.symbol} reaches ${orderData.limitRate} ${orderData.toToken.symbol}. You can disconnect your wallet - the order will still work!`,
         variant: "default",
-        duration: 4000,
+        duration: 6000,
       });
 
       setFromAmount("");
     } catch (error) {
-      console.error("[v0] Limit order error:", error);
+      console.error("[v0] ❌ Limit order error:", error);
+      console.error("[v0] ❌ Error details:", {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      
+      const errMsg = error instanceof Error ? error.message : String(error);
+      
       toast({
         title: "Limit Order Failed",
-        description: "Unable to place limit order. Please try again.",
+        description: errMsg,
         variant: "destructive",
         duration: 4000,
       });
@@ -1172,6 +1617,23 @@ export function SimpleSwapInterface() {
         if (!validation.isValid) {
           console.log("[v0] Skipping quote fetch:", validation.error);
           setToAmount("");
+          return;
+        }
+
+        // ✅ Skip quote for same-token wallet-to-wallet transfers
+        const isSameTokenTransfer = (
+          fromToken.address.toLowerCase() === toToken.address.toLowerCase() ||
+          fromToken.symbol === toToken.symbol
+        ) && (
+          fromToken.chainId === toToken.chainId
+        ) && (
+          fromWalletAddress.toLowerCase() !== toWalletAddress.toLowerCase()
+        );
+
+        if (isSameTokenTransfer) {
+          console.log("[v0] ⚡ Same-token transfer detected - skipping LiFi quote");
+          console.log("[v0] 💸 Will use direct transfer when you click Swap");
+          setToAmount(fromAmount); // 1:1 transfer
           return;
         }
 
@@ -1300,7 +1762,15 @@ export function SimpleSwapInterface() {
                     : "text-white font-semibold hover:text-white hover:bg-[#2C2C2C] rounded-none px-6 border border-[#FCD404]"
                 }`}
               >
-                {tab}
+                <span className="flex items-center gap-2">
+                  {tab}
+                  {tab === "Limit" && isMonitoring && (
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    </span>
+                  )}
+                </span>
               </Button>
             ))}
           </div>
@@ -1310,15 +1780,66 @@ export function SimpleSwapInterface() {
               <ComingSoonInterface />
             ) : activeTab === "Limit" ? (
               <>
+                {/* Monitoring Status Banner */}
+                {isMonitoring && (
+                  <div className="mb-4 p-3 bg-green-900/20 border border-green-500/30 rounded-none flex items-center gap-3">
+                    <div className="relative flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-green-400 text-sm font-medium">Auto-Execution Active</p>
+                      <p className="text-green-300/70 text-xs">Your limit orders will execute automatically when conditions are met</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-2 -mb-4 bg-[#241E08]">
                   <div className="flex justify-between items-center p-4">
                     <span className="text-gray-400 text-sm">From</span>
-                    <WalletSelectorDropdown
-                      address={fromWalletAddress}
-                      walletType={connectedWallet}
-                      onConnectNewWallet={() => handleConnectNewWallet("from")}
-                      onPasteWallet={() => handlePasteWallet("from")}
-                    />
+                    {fromWalletAddress ? (
+                      <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                        {connectedWallet && (
+                          <img
+                            src={
+                              connectedWallet.toLowerCase() === "rabby"
+                                ? "https://rabby.io/assets/images/logo-128.png"
+                                : connectedWallet.toLowerCase() === "metamask"
+                                ? "https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg"
+                                : connectedWallet.toLowerCase() === "coinbase"
+                                ? "https://avatars.githubusercontent.com/u/18060234?s=280&v=4"
+                                : connectedWallet.toLowerCase() === "trust"
+                                ? "https://trustwallet.com/assets/images/media/assets/trust_platform.svg"
+                                : connectedWallet.toLowerCase() === "brave"
+                                ? "https://brave.com/static-assets/images/brave-logo-sans-text.svg"
+                                : connectedWallet.toLowerCase() === "okx"
+                                ? "https://static.okx.com/cdn/assets/imgs/221/8B0F8A7B25C5B0B0.png"
+                                : connectedWallet.toLowerCase() === "phantom"
+                                ? "https://phantom.app/img/logo.png"
+                                : connectedWallet.toLowerCase() === "walletconnect"
+                                ? "https://walletconnect.com/static/favicon.png"
+                                : connectedWallet.toLowerCase() === "zerion"
+                                ? "https://zerion.io/favicon.ico"
+                                : ""
+                            }
+                            alt={`${connectedWallet} logo`}
+                            className="w-5 h-5 object-contain"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        )}
+                        <span>{formatAddress(fromWalletAddress)}</span>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleConnectNewWallet("from")}
+                        className="text-xs text-gray-400 hover:text-white"
+                      >
+                        Connect wallet
+                      </Button>
+                    )}
                   </div>
 
                   <div className=" p-4">
@@ -1336,57 +1857,30 @@ export function SimpleSwapInterface() {
                         onClick={() => setIsFromTokenModalOpen(true)}
                         className="bg-[#191919] text-white px-3 py-1 h-14 rounded-none border border-[#242424]"
                       >
-                        <div className="w-5 h-5 rounded-full mr-2 flex items-center justify-center">
-                          <span className="flex items-center gap-1">
+                        <div className="w-6 h-6 rounded-full mr-2 flex items-center justify-center overflow-hidden bg-gray-800">
+                          {fromToken.logoURI ? (
                             <img
-                              src={
-                                fromToken.chainName
-                                  ?.toLowerCase()
-                                  .includes("solana")
-                                  ? `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/assets/${fromToken.address}/logo.png`
-                                  : fromToken.chainName
-                                      ?.toLowerCase()
-                                      .includes("cosmos")
-                                  ? `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/cosmos/assets/${fromToken.address}/logo.png`
-                                  : fromToken.address ===
-                                    "0x0000000000000000000000000000000000000000"
-                                  ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
-                                  : `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${(() => {
-                                      switch (fromToken.chainId) {
-                                        case 1:
-                                          return "ethereum";
-                                        case 56:
-                                          return "smartchain";
-                                        case 137:
-                                          return "polygon";
-                                        case 42161:
-                                          return "arbitrum";
-                                        case 10:
-                                          return "optimism";
-                                        case 43114:
-                                          return "avalanchec";
-                                        case 8453:
-                                          return "base";
-                                        case 324:
-                                          return "zksync";
-                                        case 59144:
-                                          return "linea";
-                                        case 99998:
-                                          return "solana";
-                                        case 99999:
-                                          return "cosmos";
-                                        default:
-                                          return "ethereum";
-                                      }
-                                    })()}/assets/${fromToken.address}/logo.png`
-                              }
+                              src={fromToken.logoURI}
                               alt={fromToken.symbol}
-                              className="w-full h-full rounded-full"
+                              className="w-full h-full object-cover"
                               onError={(e) => {
-                                e.currentTarget.style.display = "none";
+                                // Fallback to cryptocurrency-icons
+                                const target = e.currentTarget;
+                                target.src = `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${fromToken.symbol.toLowerCase()}.png`;
+                                target.onerror = () => {
+                                  // Final fallback: show first letter badge
+                                  target.style.display = "none";
+                                  if (target.parentElement) {
+                                    target.parentElement.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs font-bold">${fromToken.symbol.charAt(0)}</div>`;
+                                  }
+                                };
                               }}
                             />
-                          </span>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs font-bold">
+                              {fromToken.symbol.charAt(0)}
+                            </div>
+                          )}
                         </div>
                         {fromToken.symbol}
                         <ChevronDown className="ml-1 h-3 w-3" />
@@ -1460,9 +1954,10 @@ export function SimpleSwapInterface() {
                     <span className="text-gray-400 text-sm">To</span>
                     <WalletSelectorDropdown
                       address={toWalletAddress}
-                      walletType={connectedWallet}
+                      walletType={isSecondaryConnected ? secondaryWalletType : connectedWallet}
                       onConnectNewWallet={() => handleConnectNewWallet("to")}
                       onPasteWallet={() => handlePasteWallet("to")}
+                      isSecondaryWallet={true}
                     />
                   </div>
 
@@ -1478,24 +1973,30 @@ export function SimpleSwapInterface() {
                       >
                         {toToken && toToken.symbol !== "Select Token" ? (
                           <>
-                            <div className="w-5 h-5 rounded-full mr-2 flex items-center justify-center">
-                              <span className="flex items-center">
+                            <div className="w-6 h-6 rounded-full mr-2 flex items-center justify-center overflow-hidden bg-gray-800">
+                              {toToken.logoURI ? (
                                 <img
-                                  src={
-                                    toToken.symbol === "ETH"
-                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
-                                      : toToken.symbol === "BNB"
-                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/bnb.png"
-                                      : toToken.symbol === "MATIC"
-                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/matic.png"
-                                      : toToken.symbol === "USDC"
-                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/usdc.png"
-                                      : "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/generic.png"
-                                  }
+                                  src={toToken.logoURI}
                                   alt={toToken.symbol}
-                                  className="w-full h-full rounded-full"
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    // Fallback to cryptocurrency-icons
+                                    const target = e.currentTarget;
+                                    target.src = `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${toToken.symbol.toLowerCase()}.png`;
+                                    target.onerror = () => {
+                                      // Final fallback: show first letter badge
+                                      target.style.display = "none";
+                                      if (target.parentElement) {
+                                        target.parentElement.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-green-500 to-teal-600 text-white text-xs font-bold">${toToken.symbol.charAt(0)}</div>`;
+                                      }
+                                    };
+                                  }}
                                 />
-                              </span>
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-green-500 to-teal-600 text-white text-xs font-bold">
+                                  {toToken.symbol.charAt(0)}
+                                </div>
+                              )}
                             </div>
                             {toToken.symbol}
                             <ChevronDown className="ml-1 h-3 w-3" />
@@ -1518,6 +2019,9 @@ export function SimpleSwapInterface() {
                   onFromAmountChange={setFromAmount}
                   onPlaceLimitOrder={handlePlaceLimitOrder}
                   isConnected={isConnected}
+                  walletAddress={fromWalletAddress}
+                  getQuote={getQuote}
+                  executeSwap={executeSwap}
                 />
               </>
             ) : (
@@ -1525,12 +2029,49 @@ export function SimpleSwapInterface() {
                 <div className="space-y-2 -mb-4 bg-[#241E08]">
                   <div className="flex justify-between items-center p-4">
                     <span className="text-gray-400 text-sm">From</span>
-                    <WalletSelectorDropdown
-                      address={fromWalletAddress}
-                      walletType={connectedWallet}
-                      onConnectNewWallet={() => handleConnectNewWallet("from")}
-                      onPasteWallet={() => handlePasteWallet("from")}
-                    />
+                    {fromWalletAddress ? (
+                      <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                        {connectedWallet && (
+                          <img
+                            src={
+                              connectedWallet.toLowerCase() === "rabby"
+                                ? "https://rabby.io/assets/images/logo-128.png"
+                                : connectedWallet.toLowerCase() === "metamask"
+                                ? "https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg"
+                                : connectedWallet.toLowerCase() === "coinbase"
+                                ? "https://avatars.githubusercontent.com/u/18060234?s=280&v=4"
+                                : connectedWallet.toLowerCase() === "trust"
+                                ? "https://trustwallet.com/assets/images/media/assets/trust_platform.svg"
+                                : connectedWallet.toLowerCase() === "brave"
+                                ? "https://brave.com/static-assets/images/brave-logo-sans-text.svg"
+                                : connectedWallet.toLowerCase() === "okx"
+                                ? "https://static.okx.com/cdn/assets/imgs/221/8B0F8A7B25C5B0B0.png"
+                                : connectedWallet.toLowerCase() === "phantom"
+                                ? "https://phantom.app/img/logo.png"
+                                : connectedWallet.toLowerCase() === "walletconnect"
+                                ? "https://walletconnect.com/static/favicon.png"
+                                : connectedWallet.toLowerCase() === "zerion"
+                                ? "https://zerion.io/favicon.ico"
+                                : ""
+                            }
+                            alt={`${connectedWallet} logo`}
+                            className="w-5 h-5 object-contain"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        )}
+                        <span>{formatAddress(fromWalletAddress)}</span>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleConnectNewWallet("from")}
+                        className="text-xs text-gray-400 hover:text-white"
+                      >
+                        Connect wallet
+                      </Button>
+                    )}
                   </div>
 
                   <div className="p-4">
@@ -1548,57 +2089,30 @@ export function SimpleSwapInterface() {
                         onClick={() => setIsFromTokenModalOpen(true)}
                         className="bg-[#191919] text-white px-3 py-1 h-14 rounded-none border border-[#242424]"
                       >
-                        <div className="w-5 h-5 rounded-full mr-2 flex items-center justify-center">
-                          <span className="flex items-center gap-1">
+                        <div className="w-6 h-6 rounded-full mr-2 flex items-center justify-center overflow-hidden bg-gray-800">
+                          {fromToken.logoURI ? (
                             <img
-                              src={
-                                fromToken.chainName
-                                  ?.toLowerCase()
-                                  .includes("solana")
-                                  ? `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/assets/${fromToken.address}/logo.png`
-                                  : fromToken.chainName
-                                      ?.toLowerCase()
-                                      .includes("cosmos")
-                                  ? `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/cosmos/assets/${fromToken.address}/logo.png`
-                                  : fromToken.address ===
-                                    "0x0000000000000000000000000000000000000000"
-                                  ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
-                                  : `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${(() => {
-                                      switch (fromToken.chainId) {
-                                        case 1:
-                                          return "ethereum";
-                                        case 56:
-                                          return "smartchain";
-                                        case 137:
-                                          return "polygon";
-                                        case 42161:
-                                          return "arbitrum";
-                                        case 10:
-                                          return "optimism";
-                                        case 43114:
-                                          return "avalanchec";
-                                        case 8453:
-                                          return "base";
-                                        case 324:
-                                          return "zksync";
-                                        case 59144:
-                                          return "linea";
-                                        case 99998:
-                                          return "solana";
-                                        case 99999:
-                                          return "cosmos";
-                                        default:
-                                          return "ethereum";
-                                      }
-                                    })()}/assets/${fromToken.address}/logo.png`
-                              }
+                              src={fromToken.logoURI}
                               alt={fromToken.symbol}
-                              className="w-full h-full rounded-full"
+                              className="w-full h-full object-cover"
                               onError={(e) => {
-                                e.currentTarget.style.display = "none";
+                                // Fallback to cryptocurrency-icons
+                                const target = e.currentTarget;
+                                target.src = `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${fromToken.symbol.toLowerCase()}.png`;
+                                target.onerror = () => {
+                                  // Final fallback: show first letter badge
+                                  target.style.display = "none";
+                                  if (target.parentElement) {
+                                    target.parentElement.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs font-bold">${fromToken.symbol.charAt(0)}</div>`;
+                                  }
+                                };
                               }}
                             />
-                          </span>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs font-bold">
+                              {fromToken.symbol.charAt(0)}
+                            </div>
+                          )}
                         </div>
                         {fromToken.symbol}
                         <ChevronDown className="ml-1 h-3 w-3" />
@@ -1672,9 +2186,10 @@ export function SimpleSwapInterface() {
                     <span className="text-gray-400 text-sm">To</span>
                     <WalletSelectorDropdown
                       address={toWalletAddress}
-                      walletType={connectedWallet}
+                      walletType={isSecondaryConnected ? secondaryWalletType : connectedWallet}
                       onConnectNewWallet={() => handleConnectNewWallet("to")}
                       onPasteWallet={() => handlePasteWallet("to")}
+                      isSecondaryWallet={true}
                     />
                   </div>
 
@@ -1694,24 +2209,30 @@ export function SimpleSwapInterface() {
                       >
                         {toToken && toToken.symbol !== "Select Token" ? (
                           <>
-                            <div className="w-5 h-5 rounded-full mr-2 flex items-center justify-center">
-                              <span className="flex items-center">
+                            <div className="w-6 h-6 rounded-full mr-2 flex items-center justify-center overflow-hidden bg-gray-800">
+                              {toToken.logoURI ? (
                                 <img
-                                  src={
-                                    toToken.symbol === "ETH"
-                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
-                                      : toToken.symbol === "BNB"
-                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/bnb.png"
-                                      : toToken.symbol === "MATIC"
-                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/matic.png"
-                                      : toToken.symbol === "USDC"
-                                      ? "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/usdc.png"
-                                      : "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/generic.png"
-                                  }
+                                  src={toToken.logoURI}
                                   alt={toToken.symbol}
-                                  className="w-full h-full rounded-full"
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    // Fallback to cryptocurrency-icons
+                                    const target = e.currentTarget;
+                                    target.src = `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${toToken.symbol.toLowerCase()}.png`;
+                                    target.onerror = () => {
+                                      // Final fallback: show first letter badge
+                                      target.style.display = "none";
+                                      if (target.parentElement) {
+                                        target.parentElement.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-green-500 to-teal-600 text-white text-xs font-bold">${toToken.symbol.charAt(0)}</div>`;
+                                      }
+                                    };
+                                  }}
                                 />
-                              </span>
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-green-500 to-teal-600 text-white text-xs font-bold">
+                                  {toToken.symbol.charAt(0)}
+                                </div>
+                              )}
                             </div>
                             {toToken.symbol}
                             <ChevronDown className="ml-1 h-3 w-3" />
@@ -1837,14 +2358,15 @@ export function SimpleSwapInterface() {
 
                 {!isConnected && (
                   <p className="text-center text-gray-400 text-sm leading-relaxed">
-                    Trade crypto effortlessly across Ethereum and 12+ other
-                    networks, all in one place.
+                    {supportedChainsCount > 0
+                      ? `Trade crypto effortlessly across ${supportedChainsCount}+ networks, all in one place.`
+                      : "Trade crypto effortlessly across multiple networks, all in one place."}
                   </p>
                 )}
 
                 {isConnected && isBridge && (
                   <div className="text-center text-yellow-400 text-sm">
-                    Cross-chain bridge detected
+                    Cross-chain swap detected
                   </div>
                 )}
 
@@ -1878,7 +2400,18 @@ export function SimpleSwapInterface() {
       <div className="min-h-screen bg-black pt-24 px-4">
         {!isChartDocked ? (
           /* normal layout */
-          <div className="max-w-[1400px] mx-auto">{SwapCard}</div>
+          <div className="max-w-[1400px] mx-auto">
+            {SwapCard}
+            {/* Ongoing Limit Orders Display - After Swap Card */}
+            <OngoingLimitOrders 
+              key={`ongoing-orders-${ordersRefreshKey}`}
+              walletAddress={fromWalletAddress}
+              onRefresh={() => {
+                setOrdersRefreshKey(prev => prev + 1);
+                console.log("[v0] Limit orders refreshed");
+              }}
+            />
+          </div>
         ) : (
           /* docked layout */
           <div className="max-w-[1400px] mx-auto flex flex-col md:flex-row gap-6">
@@ -1909,7 +2442,18 @@ export function SimpleSwapInterface() {
             </div>
 
             {/* RIGHT: original swap card */}
-            <div className="md:w-[40%] w-full">{SwapCard}</div>
+            <div className="md:w-[40%] w-full">
+              {SwapCard}
+              {/* Ongoing Limit Orders Display - After Swap Card */}
+              <OngoingLimitOrders 
+                key={`ongoing-orders-docked-${ordersRefreshKey}`}
+                walletAddress={fromWalletAddress}
+                onRefresh={() => {
+                  setOrdersRefreshKey(prev => prev + 1);
+                  console.log("[v0] Limit orders refreshed");
+                }}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -1919,15 +2463,17 @@ export function SimpleSwapInterface() {
       <TokenSelectionModal
         isOpen={isFromTokenModalOpen}
         onClose={() => setIsFromTokenModalOpen(false)}
-        onSelectToken={setFromToken}
+        onSelectToken={(token) => setFromToken(ensureTokenLogo(token))}
         selectedToken={fromToken}
+        walletContext="primary" // FROM wallet always uses primary
       />
 
       <TokenSelectionModal
         isOpen={isToTokenModalOpen}
         onClose={() => setIsToTokenModalOpen(false)}
-        onSelectToken={setToToken}
+        onSelectToken={(token) => setToToken(ensureTokenLogo(token))}
         selectedToken={toToken}
+        walletContext={isSecondaryConnected ? "secondary" : "primary"} // TO wallet uses secondary if connected
       />
 
       <WalletModal
@@ -1939,6 +2485,7 @@ export function SimpleSwapInterface() {
           }
         }}
         swapWalletType={swapWalletType}
+        isSecondaryWallet={swapWalletType === "to"} // Use secondary wallet hook for "to" wallet
         onSwapWalletConnected={(address, type) => {
           console.log(`[v0] Swap wallet connected for ${type}:`, address);
           if (type === "from") {

@@ -6,7 +6,9 @@ import Sidebar from "@/components/sidebar";
 import Footer from "@/components/footer";
 import { SimpleNavbar } from "@/components/simple-navbar";
 import { WalletProvider } from "@/hooks/use-wallet";
-import { CustomToaster } from "@/components/ui/custom-toast"
+import { SecondaryWalletProvider } from "@/hooks/use-secondary-wallet";
+import { CustomToaster } from "@/components/ui/custom-toast";
+import { SecurityProvider } from "@/components/security-provider";
 
 export const metadata = {
   title: "Splenex Lite Version – The future of cross-chain liquidity",
@@ -64,35 +66,35 @@ export default function RootLayout({
       <body
         className={`${generalSans.variable} ${satoshi.variable} antialiased md:overflow-hidden bg-black`}
       >
-        <WalletProvider>
-          
-      
-            <SimpleNavbar />
+        <SecurityProvider>
+          <WalletProvider>
+            <SecondaryWalletProvider>
+              <SimpleNavbar />
 
+            {/* Layout Wrapper (fills viewport minus navbar & footer height) */}
+            <div className="flex flex-row pb-14 md:h-[calc(100vh)] md:overflow-hidden">
 
-          {/* Layout Wrapper (fills viewport minus navbar & footer height) */}
-          <div className="flex flex-row pb-14 md:h-[calc(100vh)] md:overflow-hidden">
+              {/* Sidebar */}
+              <aside
+                className=" overflow-y-scroll  overflow-x-hidden bg-[#000000] z-40 sidebar-scroll hidden md:block"
+              >
+                <Sidebar />
+              </aside>
 
-            {/* Sidebar */}
-<aside
-  className=" overflow-y-scroll  overflow-x-hidden bg-[#000000] z-40 sidebar-scroll hidden md:block"
->
-  <Sidebar />
-</aside>
+              {/* Main Content */}
+              <main className="flex-1 overflow-y-auto pt-16 text-white w-full ">
+                {children}
+                <CustomToaster />
+              </main>
+            </div>
 
-
-            {/* Main Content */}
-            <main className="flex-1 overflow-y-auto pt-16 text-white w-full ">
-              {children}
-              <CustomToaster />
-            </main>
-          </div>
-
-          {/* Fixed Footer */}
-          <footer className="md:fixed bottom-0 left-0 w-full z-40 border-t-[#B79B08] border-t">
-            <Footer />
-          </footer>
-        </WalletProvider>
+            {/* Fixed Footer */}
+            <footer className="md:fixed bottom-0 left-0 w-full z-40 border-t-[#B79B08] border-t">
+              <Footer />
+            </footer>
+            </SecondaryWalletProvider>
+          </WalletProvider>
+        </SecurityProvider>
       </body>
     </html>
   );

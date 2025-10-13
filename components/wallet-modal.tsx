@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useWallet } from "@/hooks/use-wallet"
+import { useSecondaryWallet } from "@/hooks/use-secondary-wallet"
 import { detectWallets, type DetectedWallet } from "@/lib/detect-wallets"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -16,6 +17,7 @@ interface WalletModalProps {
   onOpenChange: (open: boolean) => void
   swapWalletType?: "from" | "to" | null
   onSwapWalletConnected?: (address: string, type: "from" | "to") => void
+  isSecondaryWallet?: boolean // Flag to use secondary wallet hook
 }
 
 interface WalletInfo {
@@ -105,8 +107,16 @@ export function WalletModal({
   onOpenChange,
   swapWalletType,
   onSwapWalletConnected,
+  isSecondaryWallet = false,
 }: WalletModalProps) {
   const { connect, isConnecting, connectingWallet, isConnected, address } = useWallet()
+  const { 
+    connectSecondaryWallet, 
+    isSecondaryConnecting, 
+    isSecondaryConnected, 
+    secondaryAddress,
+    secondaryWalletType
+  } = useSecondaryWallet()
 
   const [searchTerm, setSearchTerm] = useState("")
   const [wallets, setWallets] = useState<WalletInfo[]>([])
@@ -114,7 +124,9 @@ export function WalletModal({
   const [selectedWalletId, setSelectedWalletId] = useState("")
   const [justConnectedSwapWallet, setJustConnectedSwapWallet] = useState(false)
 
-  const showConnectingModal = isConnecting && connectingWallet !== null
+  // Use appropriate connecting state based on wallet type
+  const activelyConnecting = isSecondaryWallet ? isSecondaryConnecting : isConnecting
+  const showConnectingModal = activelyConnecting && (connectingWallet !== null || selectedWalletId !== "")
 
   /** Load wallets
    *  - provider-based installed detection only
@@ -175,16 +187,40 @@ export function WalletModal({
     if (open) load()
   }, [open])
 
-  /** Swap flow: auto close after connect */
+  /** Auto close after connect - both swap and regular connections */
   useEffect(() => {
-    if (justConnectedSwapWallet && isConnected && open && address) {
-      if (swapWalletType && onSwapWalletConnected) {
-        onSwapWalletConnected(address, swapWalletType)
+    // For secondary wallet
+    if (isSecondaryWallet && isSecondaryConnected && open && secondaryAddress) {
+      if (justConnectedSwapWallet && swapWalletType && onSwapWalletConnected) {
+        console.log("[WalletModal] 🔗 Secondary wallet connected for swap:", secondaryAddress)
+        onSwapWalletConnected(secondaryAddress, swapWalletType)
       }
+      console.log("[WalletModal] ✅ Auto-closing modal after secondary wallet connection")
       onOpenChange(false)
       setJustConnectedSwapWallet(false)
     }
-  }, [justConnectedSwapWallet, isConnected, open, onOpenChange, address, swapWalletType, onSwapWalletConnected])
+    // For primary wallet
+    else if (!isSecondaryWallet && isConnected && open && address) {
+      if (justConnectedSwapWallet && swapWalletType && onSwapWalletConnected) {
+        console.log("[WalletModal] 🔗 Primary wallet connected for swap:", address)
+        onSwapWalletConnected(address, swapWalletType)
+      }
+      console.log("[WalletModal] ✅ Auto-closing modal after primary wallet connection")
+      onOpenChange(false)
+      setJustConnectedSwapWallet(false)
+    }
+  }, [
+    justConnectedSwapWallet, 
+    isConnected, 
+    isSecondaryConnected,
+    isSecondaryWallet,
+    open, 
+    onOpenChange, 
+    address, 
+    secondaryAddress,
+    swapWalletType, 
+    onSwapWalletConnected
+  ])
 
   const filtered = useMemo(
     () => wallets.filter((w) => w.name.toLowerCase().includes(searchTerm.toLowerCase())),
@@ -241,12 +277,15 @@ export function WalletModal({
     setSelectedWalletName(wallet.name)
     setSelectedWalletId(wallet.id)
 
+    // Choose appropriate connect function
+    const connectFunction = isSecondaryWallet ? connectSecondaryWallet : connect
+
     // If installed and we have a provider, use it directly
     if (wallet.isInstalled && wallet.provider) {
       try {
-        console.log(`[WalletModal] Connecting with provider for ${wallet.name}`)
+        console.log(`[WalletModal] ${isSecondaryWallet ? 'Secondary' : 'Primary'} - Connecting with provider for ${wallet.name}`)
         // Pass the specific provider to connect function
-        await connect(wallet.id, wallet.provider)
+        await connectFunction(wallet.id, wallet.provider)
         if (swapWalletType) setJustConnectedSwapWallet(true)
         return
       } catch (err) {
@@ -256,7 +295,7 @@ export function WalletModal({
 
     // If not installed or provider flow failed, try your app's connect (e.g., WalletConnect)
     try {
-      await connect(wallet.id)
+      await connectFunction(wallet.id)
       if (swapWalletType) setJustConnectedSwapWallet(true)
       return
     } catch (err) {

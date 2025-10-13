@@ -1,6 +1,6 @@
 "use client"
 import { Button } from "@/components/ui/button"
-import { ChevronDown, Plus, Clipboard } from "lucide-react"
+import { ChevronDown, Plus, Clipboard, X } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,12 +8,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useSecondaryWallet } from "@/hooks/use-secondary-wallet"
 
 interface WalletSelectorDropdownProps {
   address?: string
   walletType?: string | null
   onConnectNewWallet: () => void
   onPasteWallet: () => void
+  isSecondaryWallet?: boolean // Flag to identify if this is the "To" wallet selector
 }
 
 // Wallet icons mapping - using reliable CDN URLs
@@ -56,11 +58,26 @@ const WalletIcon = ({ walletType, className = "w-5 h-5" }: { walletType?: string
   )
 }
 
-export function WalletSelectorDropdown({ address, walletType, onConnectNewWallet, onPasteWallet }: WalletSelectorDropdownProps) {
-  console.log('[WalletSelectorDropdown] Received props:', { address, walletType })
+export function WalletSelectorDropdown({ 
+  address, 
+  walletType, 
+  onConnectNewWallet, 
+  onPasteWallet,
+  isSecondaryWallet = false 
+}: WalletSelectorDropdownProps) {
+  const { disconnectSecondary } = useSecondaryWallet()
+  
+  console.log('[WalletSelectorDropdown] Received props:', { address, walletType, isSecondaryWallet })
   
   const formatAddress = (addr: string) => {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+  }
+
+  const handleDisconnect = () => {
+    if (isSecondaryWallet) {
+      console.log('[WalletSelectorDropdown] 🔌 Disconnecting secondary wallet')
+      disconnectSecondary()
+    }
   }
 
   if (!address) {
@@ -90,6 +107,15 @@ export function WalletSelectorDropdown({ address, walletType, onConnectNewWallet
           <Clipboard className="h-4 w-4 mr-2" />
           Paste new wallet
         </DropdownMenuItem>
+        {isSecondaryWallet && (
+          <>
+            <DropdownMenuSeparator className="bg-gray-700" />
+            <DropdownMenuItem onClick={handleDisconnect} className="hover:bg-red-900 cursor-pointer text-red-400">
+              <X className="h-4 w-4 mr-2" />
+              Disconnect secondary wallet
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

@@ -9,10 +9,13 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ChevronDown, Search } from "lucide-react"
 import { useWallet } from "@/hooks/use-wallet"
+import { useSecondaryWallet } from "@/hooks/use-secondary-wallet"
 import { useLiFi } from "@/hooks/use-lifi"
-import { TokenIcon } from "./TokenIcon"
+import { TokenIconWithFallback } from "./token-icon-with-fallback"
+import { POPULAR_TOKENS_WITH_LOGOS } from "@/lib/popular-tokens"
 
 interface Token {
+  id?: string
   symbol: string
   name: string
   address: string
@@ -23,6 +26,7 @@ interface Token {
   icon?: string
   logoURI?: string
   decimals?: number
+  source?: string
 }
 
 
@@ -33,6 +37,7 @@ interface Chain {
 }
 
 const CHAINS: Chain[] = [
+  // Top chains (most popular)
   {
     id: 1,
     name: "Ethereum",
@@ -41,7 +46,7 @@ const CHAINS: Chain[] = [
   {
     id: 8453,
     name: "Base",
-    icon: "https://raw.githubusercontent.com/base-org/brand-kit/main/logo/in-product/Base_Network_Logo.svg",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_base.jpg",
   },
   {
     id: 42161,
@@ -73,40 +78,82 @@ const CHAINS: Chain[] = [
     name: "Fantom",
     icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/fantom/info/logo.png",
   },
+  // Layer 2s and sidechains
+  {
+    id: 42170,
+    name: "Arbitrum Nova",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/arbitrum/info/logo.png",
+  },
+  {
+    id: 324,
+    name: "zkSync Era",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/zksync/info/logo.png",
+  },
+  {
+    id: 1101,
+    name: "Polygon zkEVM",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/polygonzkevm/info/logo.png",
+  },
+  {
+    id: 534352,
+    name: "Scroll",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_scroll.jpg",
+  },
+  {
+    id: 59144,
+    name: "Linea",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/linea/info/logo.png",
+  },
+  {
+    id: 5000,
+    name: "Mantle",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_mantle.jpg",
+  },
+  {
+    id: 169,
+    name: "Manta Pacific",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_manta.jpg",
+  },
+  {
+    id: 81457,
+    name: "Blast",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_blast.jpg",
+  },
+  {
+    id: 34443,
+    name: "Mode",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_mode.jpg",
+  },
+  {
+    id: 204,
+    name: "opBNB",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/smartchain/info/logo.png",
+  },
+  {
+    id: 7777777,
+    name: "Zora",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_zora.jpg",
+  },
+  // Other EVM chains
+  {
+    id: 100,
+    name: "Gnosis",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/xdai/info/logo.png",
+  },
   {
     id: 1285,
     name: "Moonriver",
     icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/moonriver/info/logo.png",
   },
   {
+    id: 1284,
+    name: "Moonbeam",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/moonbeam/info/logo.png",
+  },
+  {
     id: 25,
     name: "Cronos",
     icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/cronos/info/logo.png",
-  },
-  {
-    id: 1666600000,
-    name: "Harmony",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/harmony/info/logo.png",
-  },
-  {
-    id: 66,
-    name: "OKExChain",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/okexchain/info/logo.png",
-  },
-  {
-    id: 128,
-    name: "HECO",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/heco/info/logo.png",
-  },
-  {
-    id: 321,
-    name: "KCC",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/kcc/info/logo.png",
-  },
-  {
-    id: 1088,
-    name: "Metis",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/metis/info/logo.png",
   },
   {
     id: 42220,
@@ -119,183 +166,222 @@ const CHAINS: Chain[] = [
     icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/aurora/info/logo.png",
   },
   {
-    id: 2000,
-    name: "Dogechain",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/dogechain/info/logo.png",
+    id: 1088,
+    name: "Metis",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/metis/info/logo.png",
   },
   {
-    id: 199,
-    name: "BitTorrent",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/bittorrent/info/logo.png",
+    id: 321,
+    name: "KCC",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/kcc/info/logo.png",
   },
   {
-    id: 1284,
-    name: "Moonbeam",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/moonbeam/info/logo.png",
+    id: 66,
+    name: "OKExChain",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/okexchain/info/logo.png",
+  },
+  {
+    id: 128,
+    name: "HECO",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/heco/info/logo.png",
   },
   {
     id: 122,
     name: "Fuse",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/fuse/info/logo.png",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_fuse.jpg",
   },
   {
-    id: 1101,
-    name: "Polygon zkEVM",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/polygonzkevm/info/logo.png",
+    id: 199,
+    name: "BitTorrent",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_bittorrent.jpg",
   },
   {
-    id: 324,
-    name: "zkSync Era",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/zksync/info/logo.png",
+    id: 1666600000,
+    name: "Harmony",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/harmony/info/logo.png",
   },
   {
-    id: 59144,
-    name: "Linea",
-    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/linea/info/logo.png",
+    id: 106,
+    name: "Velas",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_velas.jpg",
   },
-  
-{
-  id: 99998,
-  name: "Solana",
-  icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/info/logo.png",
-},
-{
-  id: 99999,
-  name: "Cosmos",
-  icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/cosmos/info/logo.png",
-},
-
+  {
+    id: 57,
+    name: "Syscoin",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_syscoin.jpg",
+  },
+  {
+    id: 361,
+    name: "Theta",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_theta.jpg",
+  },
+  {
+    id: 40,
+    name: "Telos",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_telos.jpg",
+  },
+  {
+    id: 88,
+    name: "TomoChain",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_tomochain.jpg",
+  },
+  {
+    id: 888,
+    name: "Wanchain",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_wanchain.jpg",
+  },
+  {
+    id: 20,
+    name: "Elastos",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_elastos.jpg",
+  },
+  {
+    id: 4689,
+    name: "IoTeX",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/iotex/info/logo.png",
+  },
+  {
+    id: 9001,
+    name: "Evmos",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/evmos/info/logo.png",
+  },
+  {
+    id: 2222,
+    name: "Kava",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/kava/info/logo.png",
+  },
+  {
+    id: 8217,
+    name: "Klaytn",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/klaytn/info/logo.png",
+  },
+  {
+    id: 82,
+    name: "Meter",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_meter.jpg",
+  },
+  {
+    id: 42262,
+    name: "Oasis Emerald",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/oasis/info/logo.png",
+  },
+  {
+    id: 2020,
+    name: "Ronin",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ronin/info/logo.png",
+  },
+  {
+    id: 10000,
+    name: "SmartBCH",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_smartbch.jpg",
+  },
+  {
+    id: 19,
+    name: "Songbird",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_songbird.jpg",
+  },
+  {
+    id: 108,
+    name: "ThunderCore",
+    icon: "https://icons.llamao.fi/icons/chains/rsz_thundercore.jpg",
+  },
+  // Non-EVM chains
+  {
+    id: 99998,
+    name: "Solana",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/info/logo.png",
+  },
+  {
+    id: 99999,
+    name: "Cosmos",
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/cosmos/info/logo.png",
+  },
 ]
 
-const POPULAR_TOKENS: Token[] = [
-  {
-    symbol: "ETH",
-    name: "Ethereum",
-    address: "0x0000000000000000000000000000000000000000",
-    chainId: 1,
-    chainName: "Ethereum",
-    decimals: 18,
-  },
-  {
-    symbol: "USDC",
-    name: "USD Coin",
-    address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-    chainId: 1,
-    chainName: "Ethereum",
-    decimals: 6,
-  },
-  {
-    symbol: "USDT",
-    name: "Tether USD",
-    address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-    chainId: 1,
-    chainName: "Ethereum",
-    decimals: 6,
-  },
-  {
-    symbol: "WBTC",
-    name: "Wrapped Bitcoin",
-    address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
-    chainId: 1,
-    chainName: "Ethereum",
-    decimals: 8,
-  },
-  {
-    symbol: "DAI",
-    name: "Dai Stablecoin",
-    address: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-    chainId: 1,
-    chainName: "Ethereum",
-    decimals: 18,
-  },
-  // Base tokens
-  {
-    symbol: "ETH",
-    name: "Ethereum",
-    address: "0x0000000000000000000000000000000000000000",
-    chainId: 8453,
-    chainName: "Base",
-    decimals: 18,
-  },
-  {
-    symbol: "USDC",
-    name: "USD Coin",
-    address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    chainId: 8453,
-    chainName: "Base",
-    decimals: 6,
-  },
-  // Arbitrum tokens
-  {
-    symbol: "ETH",
-    name: "Ethereum",
-    address: "0x0000000000000000000000000000000000000000",
-    chainId: 42161,
-    chainName: "Arbitrum",
-    decimals: 18,
-  },
-  {
-    symbol: "USDC",
-    name: "USD Coin",
-    address: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
-    chainId: 42161,
-    chainName: "Arbitrum",
-    decimals: 6,
-  },
-  // BSC tokens
-  {
-    symbol: "BNB",
-    name: "Binance Coin",
-    address: "0x0000000000000000000000000000000000000000",
-    chainId: 56,
-    chainName: "BSC",
-    decimals: 18,
-  },
-  {
-    symbol: "USDT",
-    name: "Tether USD",
-    address: "0x55d398326f99059fF775485246999027B3197955",
-    chainId: 56,
-    chainName: "BSC",
-    decimals: 18,
-  },
-  // Polygon tokens
-  {
-    symbol: "MATIC",
-    name: "Polygon",
-    address: "0x0000000000000000000000000000000000000000",
-    chainId: 137,
-    chainName: "Polygon",
-    decimals: 18,
-  },
-  {
-    symbol: "USDC",
-    name: "USD Coin",
-    address: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
-    chainId: 137,
-    chainName: "Polygon",
-    decimals: 6,
-  },
-]
+// Use popular tokens with real CoinGecko logos (imported from lib)
 
 interface TokenSelectionModalProps {
   isOpen: boolean
   onClose: () => void
   onSelectToken: (token: Token) => void
   selectedToken?: Token
+  walletContext?: "primary" | "secondary" // Which wallet's balances to show
 }
 
-export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedToken }: TokenSelectionModalProps) {
+export function TokenSelectionModal({ 
+  isOpen, 
+  onClose, 
+  onSelectToken, 
+  selectedToken,
+  walletContext = "primary" 
+}: TokenSelectionModalProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [chainSearchQuery, setChainSearchQuery] = useState("")
   const [selectedChain, setSelectedChain] = useState<number | null>(null)
   const [lifiTokens, setLifiTokens] = useState<Token[]>([])
+  const [coinGeckoTokens, setCoinGeckoTokens] = useState<Token[]>([])
   const [isLoadingTokens, setIsLoadingTokens] = useState(false)
+  const [isLoadingCoinGecko, setIsLoadingCoinGecko] = useState(false)
   const [showChains, setShowChains] = useState(false);
 
-
-  const { tokenBalances } = useWallet()
+  // Get balances from appropriate wallet
+  const { tokenBalances: primaryTokenBalances } = useWallet()
+  const { secondaryTokenBalances } = useSecondaryWallet()
   const { getSupportedTokens, getSupportedChains } = useLiFi()
+
+  // Use the correct token balances based on wallet context
+  const tokenBalances = walletContext === "secondary" ? secondaryTokenBalances : primaryTokenBalances
+
+  console.log(`[TokenSelectionModal] 💼 Using ${walletContext} wallet balances:`, tokenBalances.length, "tokens")
+
+  // Real-time CoinGecko token search - finds ANY token instantly!
+  useEffect(() => {
+    const searchCoinGeckoTokens = async () => {
+      // Only search if user is actively typing (2+ characters)
+      if (!isOpen || !searchQuery || searchQuery.length < 2) {
+        setCoinGeckoTokens([]);
+        return;
+      }
+      
+      setIsLoadingCoinGecko(true);
+      try {
+        console.log(`[Token Search] 🔍 Searching CoinGecko for: "${searchQuery}"`);
+        
+        // Use server-side API to avoid rate limits
+        const searchResponse = await fetch(
+          `/api/search-tokens?q=${encodeURIComponent(searchQuery)}`
+        );
+        
+        if (!searchResponse.ok) {
+          throw new Error('Token search failed');
+        }
+        
+        const searchData = await searchResponse.json();
+        
+        // Server API returns formatted tokens directly
+        if (searchData.success && searchData.data) {
+          console.log(`[Token Search] ✅ Found ${searchData.data.length} tokens for "${searchQuery}"`);
+          setCoinGeckoTokens(searchData.data);
+        } else {
+          console.log(`[Token Search] ⚠️ No results for "${searchQuery}"`);
+          setCoinGeckoTokens([]);
+        }
+        
+      } catch (error) {
+        console.error("[Token Search] ❌ Search failed:", error);
+        setCoinGeckoTokens([]);
+      } finally {
+        setIsLoadingCoinGecko(false);
+      }
+    };
+
+    // Debounce search to avoid too many API calls
+    const debounceTimer = setTimeout(() => {
+      searchCoinGeckoTokens();
+    }, 800); // 800ms debounce
+
+    return () => clearTimeout(debounceTimer);
+  }, [isOpen, searchQuery]);
 
   useEffect(() => {
     const loadLiFiTokens = async () => {
@@ -363,7 +449,7 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
   };
 
   const allTokens = [
-    // User's actual token balances first
+    // 1. User's actual token balances first (highest priority)
     ...tokenBalances.map((balance) => {
       // Extract chain name from balance.name (e.g., "Tether USD (BSC)" -> "BSC")
       const chainName = balance.chain || (balance.name.includes("(") ? balance.name.split("(")[1].replace(")", "") : "Ethereum");
@@ -379,12 +465,24 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
         balance: balance.balance,
         usdValue: `$${balance.usdValue.toFixed(2)}`,
         decimals: decimals,
+        source: "wallet", // Mark as wallet balance
       };
     }),
-    // LiFi supported tokens for selected chain
-    ...lifiTokens,
-    // Popular tokens as fallback
-    ...POPULAR_TOKENS,
+    // 2. Popular tokens with REAL CoinGecko logos (instant loading!)
+    ...POPULAR_TOKENS_WITH_LOGOS.map((token) => ({
+      ...token,
+      source: "popular", // Mark as popular token
+    })),
+    // 3. CoinGecko tokens (comprehensive list with logos)
+    ...coinGeckoTokens.map((token) => ({
+      ...token,
+      source: "coingecko", // Mark as CoinGecko token
+    })),
+    // 4. LiFi supported tokens for selected chain
+    ...lifiTokens.map((token) => ({
+      ...token,
+      source: "lifi", // Mark as LiFi token
+    })),
   ]
 
   const filteredTokens = allTokens.filter((token, index, self) => {
@@ -532,7 +630,19 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
           {/* Right Side - Tokens */}
           <div className="flex-1 w-full p-4 border-2 border-yellow-400 overflow-y-auto">
             <DialogHeader className="mb-4">
-              <DialogTitle className="text-white text-lg">Select Token</DialogTitle>
+              <DialogTitle className="text-white text-lg flex items-center justify-between">
+                <span>Select Token</span>
+                {walletContext === "secondary" && (
+                  <span className="text-xs font-normal bg-purple-600/20 text-purple-400 border border-purple-500/50 px-3 py-1 rounded">
+                    📍 Secondary Wallet Balances
+                  </span>
+                )}
+                {walletContext === "primary" && (
+                  <span className="text-xs font-normal bg-blue-600/20 text-blue-400 border border-blue-500/50 px-3 py-1 rounded">
+                    📍 Primary Wallet Balances
+                  </span>
+                )}
+              </DialogTitle>
             </DialogHeader>
 
             <div className="mb-4">
@@ -547,18 +657,70 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
               </div>
             </div>
 
-            {isLoadingTokens && selectedChain && (
-              <div className="text-center text-gray-400 py-4">
-                Loading tokens for {CHAINS.find((c) => c.id === selectedChain)?.name}...
+            {/* Helpful hint when no search/filter */}
+            {!searchQuery && !selectedChain && !isLoadingCoinGecko && (
+              <div className="bg-yellow-400/10 border border-yellow-400/30 rounded-lg p-3 mb-3">
+                <p className="text-yellow-400 text-xs">
+                  💡 <strong>Tip:</strong> Search for ANY token listed on CoinGecko (e.g., "TWC", "PEPE", "SHIB")
+                </p>
+                <p className="text-gray-400 text-xs mt-1">
+                  Real-time search covers 10,000+ tokens across 50+ blockchains
+                </p>
               </div>
             )}
 
-            <div className="text-sm text-gray-400 font-medium mb-3">
-              {selectedChain ? `${CHAINS.find((c) => c.id === selectedChain)?.name} Tokens` : "All Tokens"}
+            {(isLoadingTokens || isLoadingCoinGecko) && (
+              <div className="space-y-2 mb-3">
+                {/* Loading skeleton */}
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg animate-pulse">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-gray-700 rounded-full"></div>
+                      <div className="space-y-1">
+                        <div className="w-16 h-4 bg-gray-700 rounded"></div>
+                        <div className="w-24 h-3 bg-gray-700 rounded"></div>
+                      </div>
+                    </div>
+                    <div className="w-12 h-4 bg-gray-700 rounded"></div>
+                  </div>
+                ))}
+                <p className="text-center text-gray-400 text-sm mt-2">
+                  {isLoadingCoinGecko && searchQuery && `🔍 Searching CoinGecko for "${searchQuery}"...`}
+                  {isLoadingCoinGecko && !searchQuery && "Loading CoinGecko tokens..."}
+                  {isLoadingTokens && selectedChain && `Loading ${CHAINS.find((c) => c.id === selectedChain)?.name} tokens...`}
+                </p>
+              </div>
+            )}
+
+            <div className="text-sm text-gray-400 font-medium mb-3 flex items-center justify-between">
+              <span>
+                {selectedChain ? `${CHAINS.find((c) => c.id === selectedChain)?.name} Tokens` : searchQuery ? "Search Results" : "Your Tokens"}
+              </span>
+              <span className="text-xs text-yellow-400">
+                {filteredTokens.length > 100 ? `Showing 100 of ${filteredTokens.length}` : `${filteredTokens.length} available`}
+              </span>
             </div>
 
+            {/* Show message if search returned no results */}
+            {searchQuery && searchQuery.length >= 2 && filteredTokens.length === 0 && !isLoadingCoinGecko && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-3 text-center">
+                <p className="text-red-400 font-medium">No tokens found for "{searchQuery}"</p>
+                <p className="text-gray-400 text-xs mt-1">
+                  Try: Different spelling, token symbol, or check CoinGecko.com
+                </p>
+              </div>
+            )}
+
+            {filteredTokens.length > 100 && (
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2 mb-3">
+                <p className="text-blue-400 text-xs text-center">
+                  ⚡ Showing top 100 results. Use search or chain filter to narrow down.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2 max-h-[400px]">
-              {filteredTokens.map((token, index) => (
+              {filteredTokens.slice(0, 100).map((token, index) => (
   <div
     key={`${token.symbol}-${token.chainId}-${index}`}
     className="flex items-center justify-between p-3 hover:bg-gray-900 rounded-lg cursor-pointer border border-transparent hover:border-gray-700"
@@ -566,83 +728,30 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
   >
     <div className="flex items-center space-x-3">
       <div className="w-8 h-8 rounded-full flex items-center justify-center relative">
-       <span className="flex items-center relative w-5 h-5">
-  <img
-    src={
-      token.chainName?.toLowerCase().includes("solana")
-        ? `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/assets/${token.address}/logo.png`
-        : token.chainName?.toLowerCase().includes("cosmos")
-        ? `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/cosmos/assets/${token.address}/logo.png`
-        : token.address === "0x0000000000000000000000000000000000000000"
-        ? CHAINS.find((c) => c.id === token.chainId)?.icon
-        : `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${(() => {
-            switch (token.chainId) {
-              case 1:
-                return "ethereum"
-              case 56:
-                return "smartchain"
-              case 137:
-                return "polygon"
-              case 42161:
-                return "arbitrum"
-              case 10:
-                return "optimism"
-              case 43114:
-                return "avalanchec"
-              case 8453:
-                return "base"
-              case 324:
-                return "zksync"
-              case 59144:
-                return "linea"
-              default:
-                return "ethereum"
-            }
-          })()}/assets/${token.address}/logo.png`
-    }
-    alt={token.symbol}
+        <TokenIconWithFallback
+          symbol={token.symbol}
+          address={token.address}
+          chainId={token.chainId}
+          chainName={token.chainName}
+          tokenId={token.id}
+          logoURI={token.logoURI}
+          className="w-full h-full rounded-full"
+          size={32}
+        />
+        
+        {/* Chain badge overlay */}
+        {token.chainId && token.address !== "0x0000000000000000000000000000000000000000" && (
+          <div className="absolute bottom-[-2px] right-[-2px] w-3 h-3 rounded-full border border-black bg-black">
+            <img
+              src={CHAINS.find((c) => c.id === token.chainId)?.icon}
+              alt={token.chainName}
     className="w-full h-full rounded-full"
     onError={(e) => {
-      // hide if no image found
       e.currentTarget.style.display = "none";
     }}
   />
-
-  {/* Optional L2 badge for EVM */}
-  {token.chainId && (
-    <>
-      {String(token.chainId) === "137" && (
-        <img
-          src="https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/matic.png"
-          alt="Polygon"
-          className="absolute bottom-[-2px] right-[-2px] w-2.5 h-2.5 rounded-full border border-black"
-        />
-      )}
-      {String(token.chainId) === "42161" && (
-        <img
-          src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/arbitrum/info/logo.png"
-          alt="Arbitrum"
-          className="absolute bottom-[-2px] right-[-2px] w-2.5 h-2.5 rounded-full border border-black"
-        />
-      )}
-      {String(token.chainId) === "56" && (
-        <img
-          src="https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/bnb.png"
-          alt="BSC"
-          className="absolute bottom-[-2px] right-[-2px] w-2.5 h-2.5 rounded-full border border-black"
-        />
-      )}
-      {String(token.chainId) === "8453" && (
-        <img
-          src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/info/logo.png"
-          alt="Base"
-          className="absolute bottom-[-2px] right-[-2px] w-2.5 h-2.5 rounded-full border border-black"
-        />
-      )}
-    </>
-  )}
-</span>
-
+          </div>
+        )}
       </div>
 
       <div>
@@ -668,16 +777,29 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
    {/* --- Mobile Layout --- */}
 <div className="flex flex-col md:hidden h-[90vh] w-full bg-[#0A0A0A]">
   {/* Header */}
-  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-    <DialogTitle className="text-white text-base font-semibold">
-      Select Token
-    </DialogTitle>
-    <button
-      onClick={onClose}
-      className="text-gray-400 hover:text-white text-lg font-light"
-    >
-      ✕
-    </button>
+  <div className="flex flex-col px-4 py-3 border-b border-gray-800 space-y-2">
+    <div className="flex items-center justify-between">
+      <DialogTitle className="text-white text-base font-semibold">
+        Select Token
+      </DialogTitle>
+      <button
+        onClick={onClose}
+        className="text-gray-400 hover:text-white text-lg font-light"
+      >
+        ✕
+      </button>
+    </div>
+    {/* Wallet context indicator */}
+    {walletContext === "secondary" && (
+      <div className="text-xs bg-purple-600/20 text-purple-400 border border-purple-500/50 px-2 py-1 rounded w-fit">
+        📍 Secondary Wallet Balances
+      </div>
+    )}
+    {walletContext === "primary" && (
+      <div className="text-xs bg-blue-600/20 text-blue-400 border border-blue-500/50 px-2 py-1 rounded w-fit">
+        📍 Primary Wallet Balances
+      </div>
+    )}
   </div>
 
   {/* Search + Chain selector */}
@@ -767,15 +889,50 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
     )}
   </div>
 
+  {/* Helpful hint for mobile */}
+  {!searchQuery && !selectedChain && !isLoadingCoinGecko && (
+    <div className="px-4 mb-2">
+      <div className="bg-yellow-400/10 border border-yellow-400/30 rounded-lg p-2">
+        <p className="text-yellow-400 text-xs">
+          💡 <strong>Search ANY token on CoinGecko!</strong>
+        </p>
+        <p className="text-gray-400 text-xs mt-0.5">
+          Try: TWC, PEPE, SHIB, or any token name
+        </p>
+      </div>
+    </div>
+  )}
+
+  {/* Loading state for mobile */}
+  {(isLoadingTokens || isLoadingCoinGecko) && (
+    <div className="px-4 space-y-2 mb-3">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="flex items-center justify-between p-3 bg-[#1A1A1A] rounded-lg animate-pulse">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-gray-700 rounded-full"></div>
+            <div className="space-y-1">
+              <div className="w-16 h-3 bg-gray-700 rounded"></div>
+              <div className="w-24 h-2 bg-gray-700 rounded"></div>
+            </div>
+          </div>
+          <div className="w-12 h-3 bg-gray-700 rounded"></div>
+        </div>
+      ))}
+    </div>
+  )}
+
   {/* Tokens list */}
   <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-    <div className="text-gray-400 text-sm mb-2">
+    <div className="text-gray-400 text-sm mb-2 flex justify-between items-center">
+      <span>
       {selectedChain
         ? `${CHAINS.find((c) => c.id === selectedChain)?.name} Tokens`
-        : "Your Tokens"}
+          : searchQuery ? "Search Results" : "Your Tokens"}
+      </span>
+      <span className="text-xs text-yellow-400">{filteredTokens.length}</span>
     </div>
 
-    {filteredTokens.map((token, index) => (
+    {filteredTokens.slice(0, 50).map((token, index) => (
       <div
         key={`${token.symbol}-${index}`}
         className="flex items-center justify-between p-3 hover:bg-[#141414] rounded-lg cursor-pointer"
@@ -784,25 +941,29 @@ export function TokenSelectionModal({ isOpen, onClose, onSelectToken, selectedTo
         <div className="flex items-center space-x-3">
           {/* Token icon */}
           <div className="relative w-8 h-8 flex items-center justify-center">
-            <img
-               src={
-    "logoURI" in token && token.logoURI
-      ? token.logoURI
-      : CHAINS.find((c) => c.id === token.chainId)?.icon ||
-        "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
-  }
-              alt={token.symbol}
+            <TokenIconWithFallback
+              symbol={token.symbol}
+              address={token.address}
+              chainId={token.chainId}
+              chainName={token.chainName}
+              tokenId={token.id}
+              logoURI={token.logoURI}
               className="w-full h-full rounded-full"
+              size={32}
             />
-            {token.chainId && (
+            
+            {/* Chain badge overlay */}
+            {token.chainId && token.address !== "0x0000000000000000000000000000000000000000" && (
+              <div className="absolute bottom-[-2px] right-[-2px] w-3 h-3 rounded-full border border-black bg-black">
               <img
-                src={
-                  CHAINS.find((c) => c.id === token.chainId)?.icon ||
-                  "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/eth.png"
-                }
+                  src={CHAINS.find((c) => c.id === token.chainId)?.icon}
                 alt={token.chainName}
-                className="absolute bottom-[-2px] right-[-2px] w-3 h-3 rounded-full border border-black"
+                  className="w-full h-full rounded-full"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
               />
+              </div>
             )}
           </div>
 
