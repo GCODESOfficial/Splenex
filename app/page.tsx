@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { useSwapVolume } from "@/hooks/useSwapVolume";
+import { useAnalytics } from "@/hooks/useAnalytics";
 import { getChains, getTools } from "@lifi/sdk";
 
 interface Amm {
@@ -27,6 +28,12 @@ export default function Page() {
   const [chains, setChains] = useState<any[]>([]);
   const [amms, setAmms] = useState<Amm[]>([]);
   const { totalVolume, dailyData } = useSwapVolume();
+  const { 
+    transactionCount, 
+    totalUsers, 
+    networkRevenue, 
+    isLoading: isAnalyticsLoading 
+  } = useAnalytics();
   const [activeRange, setActiveRange] = useState("All Time");
 
   useEffect(() => {
@@ -107,22 +114,28 @@ export default function Page() {
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
         <div className="bg-[#0C0C0C] p-6 text-center">
-          <p className="text-2xl font-bold">--</p>
-          <p className="text-sm text-[#FCD404]">Token Price</p>
-        </div>
-        <div className="bg-[#0C0C0C] p-6 text-center">
-          <p className="text-2xl font-bold">{chains.length}</p>
-          <p className="text-sm text-[#FCD404]">Active Networks</p>
+          <p className="text-2xl font-bold">
+            ${totalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-sm text-[#FCD404]">Total Trading Volume</p>
         </div>
         <div className="bg-[#0C0C0C] p-6 text-center">
           <p className="text-2xl font-bold">
-            ${totalVolume.toLocaleString()}
+            {isAnalyticsLoading ? "..." : transactionCount.toLocaleString()}
           </p>
-          <p className="text-sm text-[#FCD404]">Total Trade Done</p>
+          <p className="text-sm text-[#FCD404]">Total Transactions</p>
         </div>
         <div className="bg-[#0C0C0C] p-6 text-center">
-          <p className="text-2xl font-bold">--</p>
-          <p className="text-sm text-[#FCD404]">Locked Tokens</p>
+          <p className="text-2xl font-bold">
+            ${isAnalyticsLoading ? "..." : networkRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-sm text-[#FCD404]">Network Revenue</p>
+        </div>
+        <div className="bg-[#0C0C0C] p-6 text-center">
+          <p className="text-2xl font-bold">
+            {isAnalyticsLoading ? "..." : totalUsers.toLocaleString()}
+          </p>
+          <p className="text-sm text-[#FCD404]">Total Users</p>
         </div>
       </div>
 

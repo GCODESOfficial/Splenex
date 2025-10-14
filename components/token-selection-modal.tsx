@@ -661,7 +661,7 @@ export function TokenSelectionModal({
             {!searchQuery && !selectedChain && !isLoadingCoinGecko && (
               <div className="bg-yellow-400/10 border border-yellow-400/30 rounded-lg p-3 mb-3">
                 <p className="text-yellow-400 text-xs">
-                  💡 <strong>Tip:</strong> Search for ANY token listed on CoinGecko (e.g., &ldquo;TWC&rdquo;, &ldquo;PEPE&rdquo;, &ldquo;SHIB&rdquo;)
+                  💡 <strong>Tip:</strong> Search for ANY token listed on CoinGecko (e.g., &ldquo;WEN&rdquo;, &ldquo;PEPE&rdquo;, &ldquo;SHIB&rdquo;)
                 </p>
                 <p className="text-gray-400 text-xs mt-1">
                   Real-time search covers 10,000+ tokens across 50+ blockchains
