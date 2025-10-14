@@ -6,7 +6,7 @@
 import type React from "react"
 import { useState, useEffect, createContext, useContext } from "react"
 
-type ChainKey = "0x1" | "0x2105" | "0xa4b1" | "0x38"
+type ChainKey = "0x1" | "0x2105" | "0xa4b1" | "0x38" | "0x89" | "0xa" | "0xa86a" | "0xfa"
 
 interface TokenBalance {
   symbol: string
@@ -16,6 +16,7 @@ interface TokenBalance {
   price: number
   address: string
   chain?: string
+  chainId?: string
 }
 
 interface WalletContextType {
@@ -33,33 +34,62 @@ interface WalletContextType {
   switchNetwork: (chainId: string) => Promise<void>
   detectWallets: () => Array<{ id: string; name: string; provider: any }>
   refreshBalances: () => Promise<void>
+  isLoadingBalances: boolean
 }
 
 const WalletContext = createContext<WalletContextType | null>(null)
 
 const SUPPORTED_CHAINS: Record<
   ChainKey,
-  { name: string; rpc: string[]; moralisChain: string }
+  { name: string; rpc: string[]; moralisChain: string; explorer: string }
 > = {
   "0x1": {
     name: "Ethereum",
     rpc: ["https://eth.llamarpc.com", "https://rpc.ankr.com/eth", "https://ethereum.publicnode.com"],
     moralisChain: "eth",
+    explorer: "https://etherscan.io",
   },
   "0x2105": {
     name: "Base",
     rpc: ["https://mainnet.base.org", "https://base.llamarpc.com", "https://base.publicnode.com"],
     moralisChain: "base",
+    explorer: "https://basescan.org",
   },
   "0xa4b1": {
     name: "Arbitrum",
     rpc: ["https://arb1.arbitrum.io/rpc", "https://arbitrum.llamarpc.com", "https://arbitrum.publicnode.com"],
     moralisChain: "arbitrum",
+    explorer: "https://arbiscan.io",
   },
   "0x38": {
     name: "BSC",
     rpc: ["https://bsc-dataseed.binance.org", "https://bsc.publicnode.com", "https://bsc.llamarpc.com"],
     moralisChain: "bsc",
+    explorer: "https://bscscan.com",
+  },
+  "0x89": {
+    name: "Polygon",
+    rpc: ["https://polygon-rpc.com", "https://polygon.llamarpc.com", "https://polygon.publicnode.com"],
+    moralisChain: "polygon",
+    explorer: "https://polygonscan.com",
+  },
+  "0xa": {
+    name: "Optimism",
+    rpc: ["https://mainnet.optimism.io", "https://optimism.llamarpc.com", "https://optimism.publicnode.com"],
+    moralisChain: "optimism",
+    explorer: "https://optimistic.etherscan.io",
+  },
+  "0xa86a": {
+    name: "Avalanche",
+    rpc: ["https://api.avax.network/ext/bc/C/rpc", "https://avalanche.publicnode.com", "https://avax.meowrpc.com"],
+    moralisChain: "avalanche",
+    explorer: "https://snowtrace.io",
+  },
+  "0xfa": {
+    name: "Fantom",
+    rpc: ["https://rpc.ftm.tools", "https://fantom.publicnode.com", "https://rpc.ankr.com/fantom"],
+    moralisChain: "fantom",
+    explorer: "https://ftmscan.com",
   },
 }
 
@@ -73,13 +103,12 @@ const POPULAR_TOKENS: {
   [chainId in ChainKey]: Array<{ address: string; symbol: string; name: string; decimals: number }>
 } = {
   "0x1": [
-  { address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", symbol: "USDT", name: "Tether USD", decimals: 6 },
-  { address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", symbol: "USDC", name: "USD Coin", decimals: 6 },
-  { address: "0x6B175474E89094C44Da98b954EedeAC495271d0F", symbol: "DAI", name: "Dai Stablecoin", decimals: 18 },
-  { address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", symbol: "WBTC", name: "Wrapped BTC", decimals: 8 },
-  { address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", symbol: "WETH", name: "Wrapped Ether", decimals: 18 },
-],
-
+    { address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", symbol: "USDT", name: "Tether USD", decimals: 6 },
+    { address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", symbol: "USDC", name: "USD Coin", decimals: 6 },
+    { address: "0x6B175474E89094C44Da98b954EedeAC495271d0F", symbol: "DAI", name: "Dai Stablecoin", decimals: 18 },
+    { address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", symbol: "WBTC", name: "Wrapped BTC", decimals: 8 },
+    { address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", symbol: "WETH", name: "Wrapped Ether", decimals: 18 },
+  ],
   "0x2105": [
     { address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", name: "USD Coin", decimals: 6 },
     { address: "0x4200000000000000000000000000000000000006", symbol: "WETH", name: "Wrapped Ether", decimals: 18 },
@@ -97,6 +126,32 @@ const POPULAR_TOKENS: {
     { address: "0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3", symbol: "DAI", name: "Dai Token", decimals: 18 },
     { address: "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c", symbol: "BTCB", name: "Bitcoin BEP2", decimals: 18 },
     { address: "0x2170Ed0880ac9A755fd29B2688956BD959F933F8", symbol: "ETH", name: "Ethereum Token", decimals: 18 },
+  ],
+  "0x89": [
+    { address: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", symbol: "USDT", name: "Tether USD", decimals: 6 },
+    { address: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", symbol: "USDC", name: "USD Coin", decimals: 6 },
+    { address: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063", symbol: "DAI", name: "Dai Stablecoin", decimals: 18 },
+    { address: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", symbol: "WETH", name: "Wrapped Ether", decimals: 18 },
+    { address: "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6", symbol: "WBTC", name: "Wrapped BTC", decimals: 8 },
+  ],
+  "0xa": [
+    { address: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58", symbol: "USDT", name: "Tether USD", decimals: 6 },
+    { address: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", symbol: "USDC", name: "USD Coin", decimals: 6 },
+    { address: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1", symbol: "DAI", name: "Dai Stablecoin", decimals: 18 },
+    { address: "0x4200000000000000000000000000000000000006", symbol: "WETH", name: "Wrapped Ether", decimals: 18 },
+  ],
+  "0xa86a": [
+    { address: "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7", symbol: "USDT", name: "Tether USD", decimals: 6 },
+    { address: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", symbol: "USDC", name: "USD Coin", decimals: 6 },
+    { address: "0xd586E7F844cEa2F87f50152665BCbc2C279D8d70", symbol: "DAI", name: "Dai Stablecoin", decimals: 18 },
+    { address: "0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB", symbol: "WETH", name: "Wrapped Ether", decimals: 18 },
+    { address: "0x50b7545627a5162F82A992c33b87aDc75187B218", symbol: "WBTC", name: "Wrapped BTC", decimals: 8 },
+  ],
+  "0xfa": [
+    { address: "0x049d68029688eAbF473097a2fC38ef61633A3C7A", symbol: "USDT", name: "Tether USD", decimals: 6 },
+    { address: "0x04068DA6C83AFCFA0e13ba15A6696662335D5B75", symbol: "USDC", name: "USD Coin", decimals: 6 },
+    { address: "0x8D11eC38a3EB5E956B052f67Da8Bdc9bef8Abf3E", symbol: "DAI", name: "Dai Stablecoin", decimals: 18 },
+    { address: "0x74b23882a30290451A17c44f4F05243b6b58C76d", symbol: "WETH", name: "Wrapped Ether", decimals: 18 },
   ],
 }
 
@@ -177,6 +232,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [isConnecting, setIsConnecting] = useState(false)
   const [connectingWallet, setConnectingWallet] = useState<string | null>(null)
   const [connectedWallet, setConnectedWallet] = useState<string | null>(null)
+  const [isLoadingBalances, setIsLoadingBalances] = useState(false)
 
   const fetchTokenPrices = async (symbols: string[]): Promise<{ [symbol: string]: number }> => {
     try {
@@ -230,7 +286,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // === Accurate fetchAllTokenBalances (kept intact) ===
   const fetchAllTokenBalances = async (walletAddress: string, currentChainId: string) => {
     try {
-      console.log("[v0] Fetching balances across all supported chains...")
+      console.log("[v0] 🔄 Fetching balances across all supported chains...")
+      setIsLoadingBalances(true)
       const allTokenBalances: TokenBalance[] = []
 
       // iterate using typed keys so TS knows the union type
@@ -241,12 +298,22 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         try {
           console.log(`[v0] Fetching balances for ${chainConfig.name} (${cId})`)
 
+          // Determine native currency symbol and name based on chain
           let nativeSymbol = "ETH"
           let nativeName = "Ethereum"
 
           if (cId === "0x38") {
             nativeSymbol = "BNB"
             nativeName = "BNB"
+          } else if (cId === "0x89") {
+            nativeSymbol = "MATIC"
+            nativeName = "MATIC"
+          } else if (cId === "0xa86a") {
+            nativeSymbol = "AVAX"
+            nativeName = "AVAX"
+          } else if (cId === "0xfa") {
+            nativeSymbol = "FTM"
+            nativeName = "FTM"
           }
 
           const nativeBalance = await getBalanceForChain(walletAddress, cId, chainConfig.rpc)
@@ -366,13 +433,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         console.warn("[v0] Unable to persist balances cache:", e)
       }
 
-      console.log("[v0] Multi-chain token balances updated:", {
+      console.log("[v0] ✅ Multi-chain token balances updated:", {
         totalTokens: allTokenBalances.length,
         totalUsdValue: total,
-        tokenBalances: allTokenBalances,
+        chains: [...new Set(allTokenBalances.map(t => t.chain))].join(", "),
       })
     } catch (error) {
-      console.error("[v0] Error in fetchAllTokenBalances:", error)
+      console.error("[v0] ❌ Error in fetchAllTokenBalances:", error)
       if (address) {
         const ethBalance = await getBalance(address)
         const ethPrices = await fetchTokenPrices(["ETH"])
@@ -403,6 +470,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         setTokenBalances([])
         setTotalUsdBalance(0)
       }
+    } finally {
+      setIsLoadingBalances(false)
     }
   }
 
@@ -930,6 +999,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     switchNetwork,
     detectWallets,
     refreshBalances,
+    isLoadingBalances,
   }
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>

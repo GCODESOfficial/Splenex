@@ -29,6 +29,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { OngoingLimitOrders } from "./ongoing-limit-orders";
 import { useLimitOrderMonitor } from "@/hooks/use-limit-order-monitor";
+import { useTokenPrice } from "@/hooks/use-token-price";
 
 interface Token {
   symbol: string;
@@ -86,6 +87,14 @@ const DEFAULT_TO_TOKEN: Token = {
   decimals: 6,
   logoURI: "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/usdc.png",
   id: "usd-coin",
+};
+
+// Helper function to format USD value
+const formatUsdValue = (usdValue: number): string => {
+  if (!usdValue || isNaN(usdValue)) {
+    return '$0.00';
+  }
+  return `$${usdValue.toFixed(2)}`;
 };
 
 export function SimpleSwapInterface() {
@@ -155,6 +164,12 @@ export function SimpleSwapInterface() {
 
   // 🚀 AUTO-EXECUTE LIMIT ORDERS - Client-side monitor
   const { isMonitoring, lastCheck } = useLimitOrderMonitor(address, isConnected);
+
+  // 💰 Real-time token prices (USDT equivalent)
+  const { usdValue: fromUsdValue } = useTokenPrice(fromToken.symbol, fromAmount);
+  
+  // Use fromUsdValue for both "from" and "to" since they represent the same transaction value
+  const displayUsdValue = fromUsdValue;
 
   // Request notification permission on first connection
   useEffect(() => {
@@ -1888,7 +1903,7 @@ export function SimpleSwapInterface() {
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-400">$0.00</span>
+                      <span className="text-gray-400">{formatUsdValue(displayUsdValue)}</span>
                       {isConnected && fromToken.balance && (
                         <div className="flex items-center space-x-2">
                           <span className="text-gray-400 text-sm">
@@ -2120,7 +2135,7 @@ export function SimpleSwapInterface() {
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-">$0.00</span>
+                      <span className="text-gray-400">{formatUsdValue(displayUsdValue)}</span>
                       {isConnected && fromToken.balance && (
                         <div className="flex items-center space-x-2">
                           <span className="text-gray-400">
@@ -2247,7 +2262,7 @@ export function SimpleSwapInterface() {
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">$0.00</span>
+                      <span className="text-gray-400 text-sm">{formatUsdValue(displayUsdValue)}</span>
                       {isConnected && (
                         <div className="flex items-center space-x-2 text-xs ">
                           <Button
