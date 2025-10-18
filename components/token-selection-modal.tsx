@@ -348,7 +348,7 @@ export function TokenSelectionModal({
       try {
         console.log("[Token Modal] 🌍 Loading all available tokens...");
         
-        const response = await fetch("/api/all-tokens?limit=500");
+        const response = await fetch("/api/all-tokens?limit=2000");
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.data) {
@@ -390,31 +390,46 @@ export function TokenSelectionModal({
                     source: "wallet",
                   };
                 } else {
-                  // Token doesn't exist in wallet - create token for each chain
+                  // Token not in wallet - create separate entries for each chain
                   return token.chains.map((chain: any) => ({
-                    id: token.id,
+                    id: `${token.id}-${chain.chainId}`,
                     symbol: token.symbol,
                     name: token.name,
                     address: chain.address,
                     chainId: chain.chainId,
                     chainName: chain.chainName,
-                    balance: undefined,
-                    usdValue: undefined,
+                    balance: "0",
+                    usdValue: "$0.00",
                     logoURI: token.logoURI,
-                    decimals: chain.decimals,
-                    source: "coingecko",
+                    decimals: chain.decimals || 18,
+                    source: "api",
+                    availableChains: token.chains.length,
                     marketCapRank: token.marketCapRank,
-                    price: token.price,
+                    price: token.price
                   }));
                 }
               })
-              .flat()
-              .filter((token: Token, index: number, self: Token[]) => 
-                // Remove duplicates based on symbol + chainId
-                index === self.findIndex(t => t.symbol === token.symbol && t.chainId === token.chainId)
-              );
+              .flat() // Flatten arrays returned from map
+              .filter((token: any) => token !== null)
+              .sort((a: any, b: any) => {
+                // Enhanced sorting: wallet tokens first, then by market cap rank
+                if (a.source === "wallet" && b.source !== "wallet") return -1;
+                if (b.source === "wallet" && a.source !== "wallet") return 1;
+                
+                const rankA = a.marketCapRank || 999999;
+                const rankB = b.marketCapRank || 999999;
+                return rankA - rankB;
+              });
 
             setAllTokens(tokensWithBalances);
+            console.log(`[Token Modal] 📊 Processed ${tokensWithBalances.length} tokens for display`);
+            
+            // Log token distribution by chain
+            const chainDistribution = tokensWithBalances.reduce((acc: any, token: any) => {
+              acc[token.chainName] = (acc[token.chainName] || 0) + 1;
+              return acc;
+            }, {});
+            console.log("[Token Modal] 📈 Token distribution by chain:", chainDistribution);
           }
         }
       } catch (error) {
@@ -1006,7 +1021,7 @@ export function TokenSelectionModal({
           💡 <strong>Search ANY token on CoinGecko!</strong>
         </p>
         <p className="text-gray-400 text-xs mt-0.5">
-          Try: TWC, PEPE, SHIB, or any token name
+          Try: WEN, PEPE, SHIB, or any token name
         </p>
       </div>
     </div>

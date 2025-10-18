@@ -9,6 +9,7 @@ interface MetricsData {
   activeNetworks: number
   tradingVolume24h: number
   totalValueLocked: number
+  transactionCount24h: number
 }
 
 export function OverviewMetrics() {
@@ -17,6 +18,7 @@ export function OverviewMetrics() {
     activeNetworks: 0,
     tradingVolume24h: 0,
     totalValueLocked: 0,
+    transactionCount24h: 0,
   })
 
   useEffect(() => {
@@ -58,7 +60,7 @@ export function OverviewMetrics() {
   }
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
       <Card className="bg-gray-900 border-gray-700">
         <CardContent className="p-6 text-center">
           <div className="text-2xl font-bold text-white mb-1">{formatCurrency(metrics.spxTokenPrice)}</div>
@@ -77,6 +79,13 @@ export function OverviewMetrics() {
         <CardContent className="p-6 text-center">
           <div className="text-2xl font-bold text-white mb-1">{formatCurrency(metrics.tradingVolume24h)}</div>
           <div className="text-yellow-400 text-sm">Trading Volume (24h)</div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-gray-900 border-gray-700">
+        <CardContent className="p-6 text-center">
+          <div className="text-2xl font-bold text-white mb-1">{formatNumber(metrics.transactionCount24h)}</div>
+          <div className="text-yellow-400 text-sm">Transactions (24h)</div>
         </CardContent>
       </Card>
 

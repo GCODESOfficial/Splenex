@@ -12,25 +12,66 @@ export async function GET() {
 }
 
 async function calculateRevenueBreakdown() {
-  // This would analyze your swap transactions and calculate fees collected
-
   try {
-    // In a real implementation, this would query your database:
-    // const crossChainSwaps = await db.swaps.findMany({
-    //   where: { type: 'cross-chain', createdAt: { gte: last24Hours } }
-    // })
-    // const crossMarketSwaps = await db.swaps.findMany({
-    //   where: { type: 'same-chain', createdAt: { gte: last24Hours } }
-    // })
-
-    // For now, calculate based on estimated activity
-    const crossChainSwapRevenue = Math.floor(Math.random() * 100000) + 800000 // From cross-chain swap fees (0.1% of volume)
-    const crossMarketSwapRevenue = Math.floor(Math.random() * 50000) + 400000 // From same-chain swap fees
+    // Import Supabase client
+    const { createClient } = await import('@supabase/supabase-js')
+    
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn("[Revenue] Supabase credentials not found, using fallback")
+      return getFallbackRevenueData()
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey)
+    
+    // Calculate 24 hours ago timestamp
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    
+    // Query swaps from last 24 hours
+    const { data, error } = await supabase
+      .from('swap_analytics')
+      .select('swap_volume_usd, from_chain_id, to_chain_id')
+      .gte('timestamp', twentyFourHoursAgo)
+    
+    if (error) {
+      console.warn("[Revenue] Failed to fetch swap data from Supabase:", error.message)
+      return getFallbackRevenueData()
+    }
+    
+    if (!data || data.length === 0) {
+      console.log("[Revenue] No swaps found in last 24 hours")
+      return getFallbackRevenueData()
+    }
+    
+    // Calculate revenue based on actual swap data
+    // Assume 0.1% fee on cross-chain swaps, 0.05% on same-chain swaps
+    let crossChainSwapRevenue = 0
+    let crossMarketSwapRevenue = 0
+    
+    data.forEach((swap) => {
+      const volume = Number(swap.swap_volume_usd || 0)
+      const fromChain = Number(swap.from_chain_id || 0)
+      const toChain = Number(swap.to_chain_id || 0)
+      
+      if (fromChain !== toChain) {
+        // Cross-chain swap: 0.1% fee
+        crossChainSwapRevenue += volume * 0.001
+      } else {
+        // Same-chain swap: 0.05% fee
+        crossMarketSwapRevenue += volume * 0.0005
+      }
+    })
+    
+    // Add other revenue sources (these would come from different tables in production)
     const sFundDAORevenue = Math.floor(Math.random() * 20000) + 140000 // From DAO staking rewards
     const sNFTRevenue = Math.floor(Math.random() * 10000) + 60000 // From NFT marketplace fees
-
+    
     const total = crossChainSwapRevenue + crossMarketSwapRevenue + sFundDAORevenue + sNFTRevenue
-
+    
+    console.log(`[Revenue] 📊 Calculated revenue: Cross-chain: $${crossChainSwapRevenue.toFixed(2)}, Same-chain: $${crossMarketSwapRevenue.toFixed(2)}, Total: $${total.toFixed(2)}`)
+    
     return {
       total,
       breakdown: [
@@ -56,17 +97,22 @@ async function calculateRevenueBreakdown() {
         },
       ],
     }
+    
   } catch (error) {
-    console.error("[v0] Failed to calculate revenue breakdown:", error)
-    // Return fallback data
-    return {
-      total: 1482210,
-      breakdown: [
-        { name: "Cross-Chain Swap", value: 850000, color: "#FFD600" },
-        { name: "Cross-Market Swap", value: 420000, color: "#FF8C00" },
-        { name: "sFund DAO Stakers", value: 150000, color: "#32CD32" },
-        { name: "sNFT", value: 62210, color: "#FF6347" },
-      ],
-    }
+    console.error("[Revenue] Failed to calculate revenue breakdown:", error)
+    return getFallbackRevenueData()
+  }
+}
+
+function getFallbackRevenueData() {
+  // Return fallback data
+  return {
+    total: 1482210,
+    breakdown: [
+      { name: "Cross-Chain Swap", value: 850000, color: "#FFD600" },
+      { name: "Cross-Market Swap", value: 420000, color: "#FF8C00" },
+      { name: "sFund DAO Stakers", value: 150000, color: "#32CD32" },
+      { name: "sNFT", value: 62210, color: "#FF6347" },
+    ],
   }
 }

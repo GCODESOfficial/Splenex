@@ -317,7 +317,7 @@ export default function Page() {
             >
               <div className="absolute inset-0 flex items-center justify-center">
                 <span className="text-xl font-bold text-white">
-                  {totalVolume > 0 ? `$${totalVolume.toLocaleString()}` : "$0"}
+                ${isAnalyticsLoading ? "..." : networkRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>

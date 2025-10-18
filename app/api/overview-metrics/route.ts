@@ -8,6 +8,7 @@ export async function GET() {
       activeNetworks: await getActiveNetworksCount(),
       tradingVolume24h: await calculateTradingVolume24h(),
       totalValueLocked: await calculateTotalValueLocked(),
+      transactionCount24h: await calculateTransactionCount24h(),
     }
 
     return NextResponse.json(metrics)
@@ -51,27 +52,89 @@ async function getActiveNetworksCount(): Promise<number> {
 }
 
 async function calculateTradingVolume24h(): Promise<number> {
-  // For now, we'll track swaps in localStorage/sessionStorage in development
-  // In production, this should connect to a real database
-
   try {
-    // In a real implementation, this would be:
-    // const swaps = await db.swaps.findMany({
-    //   where: {
-    //     createdAt: {
-    //       gte: new Date(Date.now() - 24 * 60 * 60 * 1000)
-    //     }
-    //   }
-    // })
-    // return swaps.reduce((total, swap) => total + swap.usdValue, 0)
-
-    // For now, return a calculated value based on recent activity
-    const baseVolume = 1482210
-    const randomVariation = Math.floor(Math.random() * 200000) - 100000
-    return Math.max(0, baseVolume + randomVariation)
+    // Import Supabase client
+    const { createClient } = await import('@supabase/supabase-js')
+    
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn("[v0] Supabase credentials not found, using fallback")
+      return 1482210
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey)
+    
+    // Calculate 24 hours ago timestamp
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    
+    // Query swaps from last 24 hours
+    const { data, error } = await supabase
+      .from('swap_analytics')
+      .select('swap_volume_usd')
+      .gte('timestamp', twentyFourHoursAgo)
+    
+    if (error) {
+      console.warn("[v0] Failed to fetch trading volume from Supabase:", error.message)
+      return 1482210
+    }
+    
+    if (!data || data.length === 0) {
+      console.log("[v0] No swaps found in last 24 hours")
+      return 0
+    }
+    
+    // Calculate total volume
+    const totalVolume = data.reduce((sum, swap) => {
+      const volume = Number(swap.swap_volume_usd || 0)
+      return sum + volume
+    }, 0)
+    
+    console.log(`[v0] 📊 24h Trading Volume: $${totalVolume.toFixed(2)} (${data.length} swaps)`)
+    return totalVolume
+    
   } catch (error) {
     console.error("[v0] Failed to calculate trading volume:", error)
     return 1482210
+  }
+}
+
+async function calculateTransactionCount24h(): Promise<number> {
+  try {
+    // Import Supabase client
+    const { createClient } = await import('@supabase/supabase-js')
+    
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn("[v0] Supabase credentials not found, using fallback")
+      return 0
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey)
+    
+    // Calculate 24 hours ago timestamp
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    
+    // Count swaps from last 24 hours
+    const { count, error } = await supabase
+      .from('swap_analytics')
+      .select('*', { count: 'exact', head: true })
+      .gte('timestamp', twentyFourHoursAgo)
+    
+    if (error) {
+      console.warn("[v0] Failed to fetch transaction count from Supabase:", error.message)
+      return 0
+    }
+    
+    console.log(`[v0] 📊 24h Transaction Count: ${count || 0}`)
+    return count || 0
+    
+  } catch (error) {
+    console.error("[v0] Failed to calculate transaction count:", error)
+    return 0
   }
 }
 
