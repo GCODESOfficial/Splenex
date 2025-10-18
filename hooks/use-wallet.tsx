@@ -190,6 +190,24 @@ const detectCurrentWallet = (): string | null => {
     const zerion = ethereum.providers.find((p: any) => p.isZerion)
     if (zerion) return "zerion"
     
+    const tokenpocket = ethereum.providers.find((p: any) => p.isTokenPocket)
+    if (tokenpocket) return "tokenpocket"
+    
+    const bitkeep = ethereum.providers.find((p: any) => p.isBitKeep)
+    if (bitkeep) return "bitkeep"
+    
+    const mathwallet = ethereum.providers.find((p: any) => p.isMathWallet)
+    if (mathwallet) return "mathwallet"
+    
+    const tokenary = ethereum.providers.find((p: any) => p.isTokenary)
+    if (tokenary) return "tokenary"
+    
+    const frame = ethereum.providers.find((p: any) => p.isFrame)
+    if (frame) return "frame"
+    
+    const frontier = ethereum.providers.find((p: any) => p.isFrontier)
+    if (frontier) return "frontier"
+    
     const metamask = ethereum.providers.find((p: any) => p.isMetaMask && !p.isRabby)
     if (metamask) return "metamask"
   }
@@ -203,8 +221,16 @@ const detectCurrentWallet = (): string | null => {
     isOkxWallet: ethereum.isOkxWallet,
     isTrust: ethereum.isTrust,
     isZerion: ethereum.isZerion,
+    isTokenPocket: ethereum.isTokenPocket,
+    isBitKeep: ethereum.isBitKeep,
+    isMathWallet: ethereum.isMathWallet,
+    isTokenary: ethereum.isTokenary,
+    isFrame: ethereum.isFrame,
+    isFrontier: ethereum.isFrontier,
     isMetaMask: ethereum.isMetaMask,
-    isPhantom: window.solana?.isPhantom
+    isPhantom: window.solana?.isPhantom,
+    isSolflare: window.solana?.isSolflare,
+    isSlope: window.solflare?.isSlope
   })
   
   // IMPORTANT: Check Rabby FIRST (Rabby sets isMetaMask=true for compatibility)
@@ -214,9 +240,17 @@ const detectCurrentWallet = (): string | null => {
   if (ethereum.isOkxWallet) return "okx"
   if (ethereum.isTrust) return "trust"
   if (ethereum.isZerion) return "zerion"
+  if (ethereum.isTokenPocket) return "tokenpocket"
+  if (ethereum.isBitKeep) return "bitkeep"
+  if (ethereum.isMathWallet) return "mathwallet"
+  if (ethereum.isTokenary) return "tokenary"
+  if (ethereum.isFrame) return "frame"
+  if (ethereum.isFrontier) return "frontier"
   // Only return MetaMask if it's NOT Rabby (Rabby masquerades as MetaMask)
   if (ethereum.isMetaMask && !ethereum.isRabby) return "metamask"
   if (window.solana?.isPhantom) return "phantom"
+  if (window.solana?.isSolflare) return "solflare"
+  if (window.solflare?.isSlope) return "slope"
   
   console.log('[v0] Wallet detected as: injected (unknown wallet)')
   return "injected"
@@ -283,20 +317,139 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return 0
   }
 
+  // Universal function to fetch popular tokens across all chains (NO API REQUIRED)
+  const fetchPopularTokensForChain = async (walletAddress: string, chainConfig: any, allTokenBalances: TokenBalance[]) => {
+    try {
+      console.log(`[v0] 🔍 Checking popular tokens on ${chainConfig.name} (Universal method - NO API required)...`)
+      
+      // Comprehensive popular tokens by chain (NO API DEPENDENCY)
+      const popularTokensByChain: { [chainId: string]: Array<{ address: string; symbol: string; name: string; decimals: number }> } = {
+        "0x1": [ // Ethereum
+          { address: "0xA0b86a33E6441b8c4C8C0e4b8b6c4b8c4C8C0e4b", symbol: "USDC", name: "USD Coin", decimals: 6 },
+          { address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", symbol: "USDT", name: "Tether USD", decimals: 6 },
+          { address: "0x6B175474E89094C44Da98b954EedeAC495271d0F", symbol: "DAI", name: "Dai Stablecoin", decimals: 18 },
+          { address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", symbol: "WBTC", name: "Wrapped BTC", decimals: 8 },
+          { address: "0x514910771AF9Ca656af840dff83E8264EcF986CA", symbol: "LINK", name: "ChainLink Token", decimals: 18 },
+          { address: "0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0", symbol: "MATIC", name: "Matic Token", decimals: 18 },
+          { address: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", symbol: "UNI", name: "Uniswap", decimals: 18 },
+          { address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", symbol: "WETH", name: "Wrapped Ether", decimals: 18 },
+        ],
+        "0x38": [ // BSC
+          { address: "0x4B0F1812e5Df2A09796481Ff14017e6005508003", symbol: "TWT", name: "Trust Wallet Token", decimals: 18 },
+          { address: "0x0000000000000000000000000000000000000000", symbol: "TWC", name: "Tiwicat Token", decimals: 18 },
+          { address: "0x55d398326f99059fF775485246999027B3197955", symbol: "USDT", name: "Tether USD", decimals: 18 },
+          { address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", symbol: "USDC", name: "USD Coin", decimals: 18 },
+          { address: "0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3", symbol: "DAI", name: "Dai Token", decimals: 18 },
+          { address: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", symbol: "WBNB", name: "Wrapped BNB", decimals: 18 },
+          { address: "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c", symbol: "BTCB", name: "Bitcoin BEP2", decimals: 18 },
+          { address: "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82", symbol: "CAKE", name: "PancakeSwap Token", decimals: 18 },
+        ],
+        "0x89": [ // Polygon
+          { address: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", symbol: "USDC", name: "USD Coin", decimals: 6 },
+          { address: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", symbol: "USDT", name: "Tether USD", decimals: 6 },
+          { address: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063", symbol: "DAI", name: "Dai Stablecoin", decimals: 18 },
+          { address: "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6", symbol: "WBTC", name: "Wrapped BTC", decimals: 8 },
+          { address: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270", symbol: "WMATIC", name: "Wrapped Matic", decimals: 18 },
+        ],
+        "0xa4b1": [ // Arbitrum
+          { address: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8", symbol: "USDC", name: "USD Coin", decimals: 6 },
+          { address: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", symbol: "USDT", name: "Tether USD", decimals: 6 },
+          { address: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1", symbol: "DAI", name: "Dai Stablecoin", decimals: 18 },
+          { address: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", symbol: "WETH", name: "Wrapped Ether", decimals: 18 },
+        ],
+        "0xa": [ // Optimism
+          { address: "0x7F5c764cBc14f9669B88837ca1490cCa17c31607", symbol: "USDC", name: "USD Coin", decimals: 6 },
+          { address: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58", symbol: "USDT", name: "Tether USD", decimals: 6 },
+          { address: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1", symbol: "DAI", name: "Dai Stablecoin", decimals: 18 },
+          { address: "0x4200000000000000000000000000000000000006", symbol: "WETH", name: "Wrapped Ether", decimals: 18 },
+        ],
+        "0xa86a": [ // Avalanche
+          { address: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", symbol: "USDC", name: "USD Coin", decimals: 6 },
+          { address: "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7", symbol: "USDT", name: "Tether USD", decimals: 6 },
+          { address: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", symbol: "WAVAX", name: "Wrapped AVAX", decimals: 18 },
+        ],
+        "0xfa": [ // Fantom
+          { address: "0x04068DA6C83AFCFA0e13ba15A6696662335D5B75", symbol: "USDC", name: "USD Coin", decimals: 6 },
+          { address: "0x049d68029688eAbF473097a2fC38ef61633A3C7A", symbol: "fUSDT", name: "Frapped USDT", decimals: 6 },
+          { address: "0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83", symbol: "WFTM", name: "Wrapped Fantom", decimals: 18 },
+        ],
+      }
+
+      const chainTokens = popularTokensByChain[chainConfig.chainId] || []
+      console.log(`[v0] Checking ${chainTokens.length} popular tokens on ${chainConfig.name}...`)
+      
+      // Process tokens in parallel for faster detection
+      const tokenPromises = chainTokens.map(async (token) => {
+        try {
+          const balance = await getTokenBalanceForChain(token.address, walletAddress, token.decimals, chainConfig.rpc)
+          
+          if (balance > 0.000001) {
+            console.log(`[v0] ✅ Found ${token.symbol} balance: ${balance}`)
+            
+            // Fetch price (this might fail but we still show the token)
+            let price = 0
+            let usdValue = 0
+            try {
+              const prices = await fetchTokenPrices([token.symbol])
+              price = prices[token.symbol] || 0
+              usdValue = balance * price
+            } catch (priceError) {
+              console.warn(`[v0] Price fetch failed for ${token.symbol}, showing balance without USD value`)
+            }
+            
+            return {
+              symbol: token.symbol,
+              name: `${token.name} (${chainConfig.name})`,
+              balance: balance.toFixed(6),
+              usdValue,
+              price,
+              address: token.address,
+              chain: chainConfig.name,
+            }
+          }
+          return null
+        } catch (tokenError) {
+          console.warn(`[v0] Error fetching ${token.symbol}:`, tokenError)
+          return null
+        }
+      })
+      
+      const results = await Promise.all(tokenPromises)
+      const validTokens = results.filter(token => token !== null)
+      
+      if (validTokens.length > 0) {
+        console.log(`[v0] ✅ Found ${validTokens.length} tokens with balances on ${chainConfig.name}`)
+        allTokenBalances.push(...validTokens)
+      }
+      
+    } catch (error) {
+      console.error("[v0] Error in fetchPopularTokensForChain:", error)
+    }
+  }
+
   // === Accurate fetchAllTokenBalances (kept intact) ===
   const fetchAllTokenBalances = async (walletAddress: string, currentChainId: string) => {
     try {
       console.log("[v0] 🔄 Fetching balances across all supported chains...")
+      console.log("[v0] 📍 Wallet address:", walletAddress)
+      console.log("[v0] 📍 Current chain ID:", currentChainId)
+      
+      if (!walletAddress) {
+        console.log("[v0] ❌ No wallet address provided")
+        return
+      }
+      
       setIsLoadingBalances(true)
       const allTokenBalances: TokenBalance[] = []
 
       // iterate using typed keys so TS knows the union type
       const chainKeys = Object.keys(SUPPORTED_CHAINS) as ChainKey[]
+      console.log("[v0] 📋 Supported chains:", chainKeys)
 
       const chainPromises = chainKeys.map(async (cId) => {
         const chainConfig = SUPPORTED_CHAINS[cId]
         try {
-          console.log(`[v0] Fetching balances for ${chainConfig.name} (${cId})`)
+          console.log(`[v0] 🔗 Processing chain: ${chainConfig.name} (${cId})`)
 
           // Determine native currency symbol and name based on chain
           let nativeSymbol = "ETH"
@@ -375,6 +528,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
                 }
               }
 
+              // Universal fallback for popular tokens on all chains
+              await fetchPopularTokensForChain(walletAddress, chainConfig, allTokenBalances)
+
               try {
                 const usdtEntry = (POPULAR_TOKENS[cId] || []).find(t => t.symbol === "USDT");
                 if (usdtEntry) {
@@ -408,11 +564,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
               }
             } else {
               console.log(`[v0] API failed for ${chainConfig.name}, status:`, response.status)
-              await fetchPopularTokensForChain(walletAddress, cId, chainConfig, allTokenBalances)
+              await fetchPopularTokensForChain(walletAddress, chainConfig, allTokenBalances)
             }
           } catch (apiError) {
             console.log(`[v0] API error for ${chainConfig.name}, using fallback:`, apiError)
-            await fetchPopularTokensForChain(walletAddress, cId, chainConfig, allTokenBalances)
+            await fetchPopularTokensForChain(walletAddress, chainConfig, allTokenBalances)
           }
         } catch (chainError) {
           console.error(`[v0] Error fetching balances for ${chainConfig.name}:`, chainError)
@@ -533,9 +689,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     decimals: number,
     rpcUrls: string[],
   ) => {
+    console.log(`[v0] 🔍 Checking token balance: ${tokenAddress} for wallet: ${walletAddress}`)
+    
     for (const rpcUrl of rpcUrls) {
       try {
         const data = `0x70a08231000000000000000000000000${walletAddress.slice(2)}`
+        console.log(`[v0] 📡 Calling RPC: ${rpcUrl}`)
+        console.log(`[v0] 📋 Token address: ${tokenAddress}`)
+        console.log(`[v0] 📋 Call data: ${data}`)
 
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 3000) // 3 second timeout (reduced from 10s)
@@ -568,12 +729,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
 
         const result = await response.json()
+        console.log(`[v0] 📊 RPC Response for ${tokenAddress}:`, result)
+        
         if (result.result && result.result !== "0x") {
           const balance = Number.parseInt(result.result, 16) / Math.pow(10, decimals)
+          console.log(`[v0] ✅ Token balance found: ${balance} ${tokenAddress}`)
           return balance
         } else if (result.error) {
-          console.log(`[v0] Token balance RPC error from ${rpcUrl}:`, result.error)
+          console.log(`[v0] ❌ Token balance RPC error from ${rpcUrl}:`, result.error)
           continue
+        } else {
+          console.log(`[v0] ⚠️ No balance found for ${tokenAddress} (result: ${result.result})`)
         }
       } catch (error) {
         if (error instanceof Error) {
@@ -941,47 +1107,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
 
     return detectedWallets
-  }
-
-  const fetchPopularTokensForChain = async (
-    walletAddress: string,
-    chainIdParam: ChainKey,
-    chainConfig: { name: string; rpc: string[]; moralisChain: string },
-    allTokenBalances: TokenBalance[],
-  ) => {
-    const tokens = POPULAR_TOKENS[chainIdParam] || []
-
-    const tokenPromises = tokens.map(async (token) => {
-      const balance = await getTokenBalanceForChain(token.address, walletAddress, token.decimals, chainConfig.rpc)
-      return {
-        ...token,
-        balance: balance.toFixed(6),
-        rawBalance: balance,
-      }
-    })
-
-    const tokenResults = await Promise.all(tokenPromises)
-    const tokensWithBalance = tokenResults.filter((token) => token.rawBalance > 0)
-
-    if (tokensWithBalance.length > 0) {
-      const symbolsForPrice = tokensWithBalance.map((token) => token.symbol.toUpperCase())
-      const prices = await fetchTokenPrices(symbolsForPrice)
-
-      tokensWithBalance.forEach((token) => {
-        const price = prices[token.symbol.toUpperCase()] || 0
-        const usdValue = token.rawBalance * price
-
-        allTokenBalances.push({
-          symbol: token.symbol,
-          name: `${token.name} (${chainConfig.name})`,
-          balance: token.balance,
-          usdValue,
-          price,
-          address: token.address,
-          chain: chainConfig.name,
-        })
-      })
-    }
   }
 
   const value: WalletContextType = {

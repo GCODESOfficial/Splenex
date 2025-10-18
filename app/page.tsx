@@ -36,7 +36,7 @@ interface Amm {
 export default function Page() {
   const [chains, setChains] = useState<any[]>([]);
   const [amms, setAmms] = useState<Amm[]>([]);
-  const { totalVolume, dailyData } = useSwapVolume();
+  const { totalVolume, dailyData, yesterdayVolume, todayVolume } = useSwapVolume();
   const { 
     totalUsers, 
     networkRevenue, 
@@ -49,6 +49,11 @@ export default function Page() {
   } = useSwapCount();
   const [activeRange, setActiveRange] = useState("3D");
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Calculate percentage increase since yesterday (today vs yesterday)
+  const percentageIncrease = yesterdayVolume > 0 
+    ? ((todayVolume - yesterdayVolume) / yesterdayVolume) * 100 
+    : 0;
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -114,19 +119,19 @@ export default function Page() {
   }, [totalVolume])
 
   return (
-    <div className="min-h-screen bg-black text-white px-16">
+    <div className="min-h-screen bg-black text-white px-8">
       {/* Header */}
       <div className="">
-        <div className=" mx-auto px-6 py-8">
+        <div className=" mx-auto px-6 py-0">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-bold text-white mb-2">
+              <h1 className="text-2xl font-bold text-white mb-1">
                 Trade Everything, Anytime
       </h1>
-              <p className="text-gray-300 text-lg">
-                In the last 24 hours, Splenex recorded <span className="font-bold text-white">12.4M</span> swaps 
-                with <span className="font-bold text-white">$8.9B</span> in trading volume 
-                up <span className="font-bold text-[#FFD600]">+1.8%</span> since yesterday.
+              <p className="text-gray-300 text-sm">
+                In the last 24 hours, Splenex recorded <span className="font-bold text-[#FCD404]">{isSwapCountLoading ? "..." : swapCount.toLocaleString()}</span> swaps 
+                with <span className="font-bold text-[#FCD404]">${totalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> in trading volume 
+                up <span className={`font-bold ${percentageIncrease >= 0 ? "text-[#20E070]" : "text-red-500"}`}>{percentageIncrease >= 0 ? "+" : ""}{percentageIncrease.toFixed(1)}%</span> since yesterday.
               </p>
         </div>
             
@@ -139,83 +144,123 @@ export default function Page() {
       <div className=" mx-auto px-6 py-8 space-y-8">
         
         {/* Metrics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-1">
           {/* SPX Token Price Card - Highlighted */}
-          <div className="flex flex-col items-center justify-center p-6  min-h-[120px] bg-gradient-to-br from-[#FFD600] to-[#F3DA5F] text-black">
-            <div className="flex items-center justify-center w-12 h-12 mb-3">
-              <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
-                <span className="text-[#FFD600] font-bold text-lg">S</span>
-              </div>
-            </div>
+          <div className="flex flex-col  justify-center p-4  min-h-[120px] bg-gradient-to-br from-[#FFD600] to-[#F3DA5F] text-black">
+            <div className="flex items-center justify-start w-12 h-12 mb-3">
+             <Image 
+                    src="/images/pricelogo.svg" 
+                    alt="SPX Logo" 
+                    width={20} 
+                    height={20} 
+                    className="w-6 h-6"
+                    />
+                </div>
+
             <div className="text-2xl font-bold mb-1 text-black">
               $----
             </div>
-            <div className="text-sm font-medium text-center text-black/80">
+            <div className="text-xs font-medium text-left whitespace-nowrap text-black/80">
               SPX Token Price
             </div>
           </div>
           
           {/* Active Networks */}
-          <div className="flex flex-col items-center justify-center p-6 min-h-[120px] bg-[#121212] border border-[#1E1E1E] text-white">
-            <div className="flex items-center justify-center w-12 h-12 mb-3">
-              <Network className="w-8 h-8" />
+          <div className="flex flex-col items-start justify-center p-4 min-h-[120px] bg-[#121212] border border-[#1E1E1E] text-white">
+            <div className="flex items-center justify-start w-12 h-12 mb-3">
+              {/* <Network className="w-8 h-8" /> */}
+              <Image 
+                src="/images/blockchain-04.svg"
+                alt="Network Logo"
+                width={20}
+                height={20}
+                className="w-8 h-8"
+              />
             </div>
             <div className="text-2xl font-bold mb-1 text-white">
               {chains.length}+
             </div>
-            <div className="text-sm font-medium text-center text-gray-400">
+            <div className="text-xs font-medium text-center text-gray-400">
               Active Networks
             </div>
           </div>
           
           {/* Total Trading Volume */}
-          <div className="flex flex-col items-center justify-center p-6  min-h-[120px] bg-[#121212] border border-[#1E1E1E] text-white">
-            <div className="flex items-center justify-center w-12 h-12 mb-3">
-              <TrendingUp className="w-8 h-8" />
+          <div className="flex flex-col items-start justify-center p-4  min-h-[120px] bg-[#121212] border border-[#1E1E1E] text-white">
+            <div className="flex items-center justify-start w-12 h-12 mb-3">
+              {/* <TrendingUp className="w-8 h-8" /> */}
+              <Image 
+                src="/images/trading-volume.svg"
+                alt="Trending Up Logo"
+                width={20}
+                height={20}
+                className="w-8 h-8"
+                />
             </div>
             <div className="text-2xl font-bold mb-1 text-white">
               ${totalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <div className="text-sm font-medium text-center text-gray-400">
+            <div className="text-xs font-medium text-left text-gray-400">
               Total Trading Volume
             </div>
           </div>
           
           {/* Total Transaction Count */}
-          <div className="flex flex-col items-center justify-center p-6  min-h-[120px] bg-[#121212] border border-[#1E1E1E] text-white">
-            <div className="flex items-center justify-center w-12 h-12 mb-3">
-              <RefreshCw className="w-8 h-8" />
+          <div className="flex flex-col items-start justify-center p-4  min-h-[120px] bg-[#121212] border border-[#1E1E1E] text-white">
+            <div className="flex items-center justify-start w-12 h-12 mb-3">
+              {/* <RefreshCw className="w-8 h-8" /> */}
+              <Image 
+                src="/images/transaction-count.svg"
+                alt="Transaction Count Logo"
+                width={20}
+                height={20}
+                className="w-8 h-8"
+                />
             </div>
             <div className="text-2xl font-bold mb-1 text-white">
               {isSwapCountLoading ? "..." : swapCount.toLocaleString()}
             </div>
-            <div className="text-sm font-medium text-center text-gray-400">
+            <div className="text-xs font-medium text-left whitespace-nowrap text-gray-400">
               Total Transaction Count
             </div>
           </div>
           
           {/* Total Network Revenue */}
-          <div className="flex flex-col items-center justify-center p-6 min-h-[120px] bg-[#121212] border border-[#1E1E1E] text-white">
-            <div className="flex items-center justify-center w-12 h-12 mb-3">
-              <DollarSign className="w-8 h-8" />
+          <div className="flex flex-col items-start justify-center p-4 min-h-[120px] bg-[#121212] border border-[#1E1E1E] text-white">
+            <div className="flex items-center justify-start w-12 h-12 mb-3">
+              {/* <DollarSign className="w-8 h-8" /> */}
+              <Image 
+              src="/images/network-revenue.svg" 
+              alt="Network Revenue Logo" 
+              width={20} 
+              height={20} 
+              className="w-8 h-8"
+              />
             </div>
             <div className="text-2xl font-bold mb-1 text-white">
               ${isAnalyticsLoading ? "..." : networkRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <div className="text-sm font-medium text-center text-gray-400">
+            <div className="text-xs font-medium text-left whitespace-nowrap text-gray-400">
               Total Network Revenue
             </div>
           </div>
           
           {/* Total Value Locked */}
-          <div className="flex flex-col items-center justify-center p-6 min-h-[120px] bg-[#121212] border border-[#1E1E1E] text-white">
-            <div className="flex items-center justify-center w-12 h-12 mb-3">
-              <Lock className="w-8 h-8" />
+          <div className="flex flex-col items-start justify-center p-4 min-h-[120px] bg-[#121212] border border-[#1E1E1E] text-white">
+            <div className="flex items-center justify-start w-12 h-12 mb-3">
+              {/* <Lock className="w-8 h-8" /> */}
+              <Image 
+              src="/images/total-value-locked.svg"
+              alt="Locked Tokens Logo" 
+              width={20} 
+              height={20} 
+              className="w-8 h-8"
+              />
             </div>
             <div className="text-2xl font-bold mb-1 text-white">
               $----
             </div>
-            <div className="text-sm font-medium text-center text-gray-400">
+            <div className="text-xs font-medium text-left text-gray-400">
               Total Value Locked
             </div>
         </div>
@@ -223,7 +268,7 @@ export default function Page() {
 
 
       {/* Supported Chains */}
-      <div className="p-6">
+      <div className="p-2">
           <h3 className="text-white text-lg font-semibold mb-4">Supported Chains</h3>
           
           <div className="relative w-full overflow-hidden mb-4">
@@ -383,9 +428,9 @@ export default function Page() {
               amms.slice(0, 16).map((amm: Amm) => (
                 <div
                   key={amm.key || amm.name}
-                  className="flex items-center gap-2 p-3 bg-[#1A1A1A] border border-[#2A2A2A] hover:border-[#FFD600] transition-all duration-200 cursor-pointer group"
+                  className="flex items-center gap-1 p-3 bg-[#1A1A1A] border border-[#2A2A2A] hover:border-[#FFD600] transition-all duration-200 cursor-pointer group"
                 >
-                  <div className="w-5 h-5 rounded-full overflow-hidden bg-gray-800 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <div className="w-4 h-4 rounded-full overflow-hidden bg-gray-800 flex items-center justify-center group-hover:scale-110 transition-transform">
                     {(amm.logoURI || amm.logo) ? (
                       <Image
                         src={amm.logoURI || amm.logo || ''}
@@ -399,7 +444,7 @@ export default function Page() {
                       />
                     ) : null}
                   </div>
-                  <span className="text-white text-xs font-medium text-center leading-tight">
+                  <span className="text-white text-[10px] font-medium text-center leading-tight">
                     {amm.name}
                   </span>
                 </div>

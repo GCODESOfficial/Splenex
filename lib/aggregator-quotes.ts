@@ -1,10 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use server"
 
+import { getCachedQuote, setCachedQuote } from "./quote-cache";
+
 /**
  * Multi-Aggregator Quote System
  * Tries multiple DEX aggregators to ensure maximum token coverage
  * Order: LiFi → 1inch → 0x → Paraswap → PancakeSwap
+ * Now with 30-second caching for faster repeated requests!
  */
 
 interface QuoteRequest {
@@ -428,9 +431,54 @@ export async function getMultiAggregatorQuote(request: QuoteRequest) {
   console.log(`[Aggregator] To: ${request.toToken} (chain ${request.toChain})`);
   console.log(`[Aggregator] Amount: ${request.fromAmount}`);
   
+  // Check cache first for instant response
+  const cachedQuote = getCachedQuote(request);
+  if (cachedQuote) {
+    console.log("[Aggregator] ⚡ Returning cached quote (instant!)");
+    return {
+      success: true,
+      data: cachedQuote,
+      provider: cachedQuote.provider,
+    };
+  }
+  
   const isCrossChain = request.fromChain !== request.toChain;
   
-  // Try all aggregators in parallel
+  // Optimized: Try fastest aggregators first, with early return
+  // LiFi is fastest for cross-chain, 1inch for same-chain
+  const aggregators = isCrossChain 
+    ? [getLiFiQuote, get1inchQuote, get0xQuote, getParaswapQuote, getPancakeSwapQuote]
+    : [get1inchQuote, get0xQuote, getLiFiQuote, getParaswapQuote, getPancakeSwapQuote];
+  
+  // Try aggregators sequentially with early return for better performance
+  for (let i = 0; i < aggregators.length; i++) {
+    try {
+      console.log(`[Aggregator] ⚡ Trying aggregator ${i + 1}/${aggregators.length}...`);
+      const quote = await Promise.race([
+        aggregators[i](request),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 6000)) // 6s per aggregator
+      ]);
+      
+      if (quote) {
+        console.log(`[Aggregator] ✅ Got quote from aggregator ${i + 1} in <6s`);
+        
+        // Cache the successful quote for faster future requests
+        setCachedQuote(request, quote);
+        
+        return {
+          success: true,
+          data: quote,
+          provider: quote.provider,
+        };
+      }
+    } catch (error) {
+      console.log(`[Aggregator] ⚠️ Aggregator ${i + 1} failed:`, error instanceof Error ? error.message : 'Unknown error');
+      continue; // Try next aggregator
+    }
+  }
+  
+  // Fallback: Try all aggregators in parallel if sequential failed
+  console.log("[Aggregator] 🔄 Sequential failed, trying parallel fallback...");
   const quotes = await Promise.allSettled([
     getLiFiQuote(request),
     get1inchQuote(request),
@@ -466,6 +514,9 @@ export async function getMultiAggregatorQuote(request: QuoteRequest) {
   });
 
   const bestQuote = successfulQuotes[0];
+  
+  // Cache the best quote for faster future requests
+  setCachedQuote(request, bestQuote);
   
   console.log(`[Aggregator] ✅ Best quote from: ${bestQuote.provider.toUpperCase()}`);
   console.log(`[Aggregator] Output amount: ${bestQuote.toAmount}`);

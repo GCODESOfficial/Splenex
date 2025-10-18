@@ -320,8 +320,10 @@ export function TokenSelectionModal({
   const [selectedChain, setSelectedChain] = useState<number | null>(null)
   const [lifiTokens, setLifiTokens] = useState<Token[]>([])
   const [coinGeckoTokens, setCoinGeckoTokens] = useState<Token[]>([])
+  const [allTokens, setAllTokens] = useState<Token[]>([])
   const [isLoadingTokens, setIsLoadingTokens] = useState(false)
   const [isLoadingCoinGecko, setIsLoadingCoinGecko] = useState(false)
+  const [isLoadingAllTokens, setIsLoadingAllTokens] = useState(false)
   const [showChains, setShowChains] = useState(false);
 
   // Get balances from appropriate wallet
@@ -333,6 +335,98 @@ export function TokenSelectionModal({
   const tokenBalances = walletContext === "secondary" ? secondaryTokenBalances : primaryTokenBalances
 
   console.log(`[TokenSelectionModal] 💼 Using ${walletContext} wallet balances:`, tokenBalances.length, "tokens")
+
+  // Load all tokens from comprehensive API when modal opens
+  useEffect(() => {
+    const loadAllTokens = async () => {
+      if (!isOpen) {
+        setAllTokens([]);
+        return;
+      }
+
+      setIsLoadingAllTokens(true);
+      try {
+        console.log("[Token Modal] 🌍 Loading all available tokens...");
+        
+        const response = await fetch("/api/all-tokens?limit=500");
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data) {
+            console.log(`[Token Modal] ✅ Loaded ${data.data.length} tokens from all chains`);
+            
+            // Debug: Check for Solana and Cosmos tokens specifically
+            const solanaTokens = data.data.filter((token: any) => 
+              token.chains?.some((chain: any) => chain.chainId === 99998)
+            );
+            const cosmosTokens = data.data.filter((token: any) => 
+              token.chains?.some((chain: any) => chain.chainId === 99999)
+            );
+            
+            console.log("[Token Modal] 🔍 Solana tokens found:", solanaTokens.length);
+            console.log("[Token Modal] 🔍 Cosmos tokens found:", cosmosTokens.length);
+            
+            // Convert to Token format and filter by wallet balances
+            const tokensWithBalances = data.data
+              .map((token: any) => {
+                // Find if token exists in wallet balances
+                const walletToken = tokenBalances.find(walletToken => 
+                  walletToken.symbol === token.symbol && 
+                  token.chains.some((chain: any) => chain.chainId === walletToken.chainId)
+                );
+
+                if (walletToken) {
+                  // Token exists in wallet - use wallet data
+                  return {
+                    id: token.id,
+                    symbol: token.symbol,
+                    name: token.name,
+                    address: walletToken.address,
+                    chainId: walletToken.chainId,
+                    chainName: walletToken.chainName,
+                    balance: walletToken.balance,
+                    usdValue: walletToken.usdValue,
+                    logoURI: token.logoURI || walletToken.logoURI,
+                    decimals: walletToken.decimals || 18,
+                    source: "wallet",
+                  };
+                } else {
+                  // Token doesn't exist in wallet - create token for each chain
+                  return token.chains.map((chain: any) => ({
+                    id: token.id,
+                    symbol: token.symbol,
+                    name: token.name,
+                    address: chain.address,
+                    chainId: chain.chainId,
+                    chainName: chain.chainName,
+                    balance: undefined,
+                    usdValue: undefined,
+                    logoURI: token.logoURI,
+                    decimals: chain.decimals,
+                    source: "coingecko",
+                    marketCapRank: token.marketCapRank,
+                    price: token.price,
+                  }));
+                }
+              })
+              .flat()
+              .filter((token: Token, index: number, self: Token[]) => 
+                // Remove duplicates based on symbol + chainId
+                index === self.findIndex(t => t.symbol === token.symbol && t.chainId === token.chainId)
+              );
+
+            setAllTokens(tokensWithBalances);
+          }
+        }
+      } catch (error) {
+        console.error("[Token Modal] ❌ Failed to load all tokens:", error);
+        setAllTokens([]);
+      } finally {
+        setIsLoadingAllTokens(false);
+      }
+    };
+
+    loadAllTokens();
+  }, [isOpen, tokenBalances]);
 
   // Real-time CoinGecko token search - finds ANY token instantly!
   useEffect(() => {
@@ -448,7 +542,7 @@ export function TokenSelectionModal({
     return 18;
   };
 
-  const allTokens = [
+  const allTokensCombined = [
     // 1. User's actual token balances first (highest priority)
     ...tokenBalances.map((balance) => {
       // Extract chain name from balance.name (e.g., "Tether USD (BSC)" -> "BSC")
@@ -468,24 +562,29 @@ export function TokenSelectionModal({
         source: "wallet", // Mark as wallet balance
       };
     }),
-    // 2. Popular tokens with REAL CoinGecko logos (instant loading!)
+    // 2. All tokens from comprehensive API (CoinGecko + all chains)
+    ...allTokens.map((token) => ({
+      ...token,
+      source: token.source || "comprehensive", // Mark as comprehensive token
+    })),
+    // 3. Popular tokens with REAL CoinGecko logos (instant loading!)
     ...POPULAR_TOKENS_WITH_LOGOS.map((token) => ({
       ...token,
       source: "popular", // Mark as popular token
     })),
-    // 3. CoinGecko tokens (comprehensive list with logos)
+    // 4. CoinGecko tokens (comprehensive list with logos)
     ...coinGeckoTokens.map((token) => ({
       ...token,
       source: "coingecko", // Mark as CoinGecko token
     })),
-    // 4. LiFi supported tokens for selected chain
+    // 5. LiFi supported tokens for selected chain
     ...lifiTokens.map((token) => ({
       ...token,
       source: "lifi", // Mark as LiFi token
     })),
   ]
 
-  const filteredTokens = allTokens.filter((token, index, self) => {
+  const filteredTokens = allTokensCombined.filter((token, index, self) => {
     // Remove duplicates based on symbol + chainId
     const isDuplicate = self.findIndex((t) => t.symbol === token.symbol && t.chainId === token.chainId) !== index
     if (isDuplicate) return false
@@ -701,8 +800,18 @@ export function TokenSelectionModal({
               </span>
             </div>
 
+            {/* Show loading indicator for comprehensive tokens */}
+            {isLoadingAllTokens && (
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-3 text-center">
+                <p className="text-blue-400 font-medium">🌍 Loading all tokens from CoinGecko...</p>
+                <p className="text-gray-400 text-xs mt-1">
+                  Fetching tokens across all supported chains
+                </p>
+              </div>
+            )}
+
             {/* Show message if search returned no results */}
-            {searchQuery && searchQuery.length >= 2 && filteredTokens.length === 0 && !isLoadingCoinGecko && (
+            {searchQuery && searchQuery.length >= 2 && filteredTokens.length === 0 && !isLoadingCoinGecko && !isLoadingAllTokens && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-3 text-center">
                 <p className="text-red-400 font-medium">No tokens found for &ldquo;{searchQuery}&rdquo;</p>
                 <p className="text-gray-400 text-xs mt-1">

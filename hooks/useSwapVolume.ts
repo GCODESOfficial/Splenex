@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // hooks/useSwapVolume.ts
 "use client";
 import { useEffect, useState } from "react";
@@ -6,6 +7,8 @@ import { supabase } from "@/lib/supabaseClient";
 export function useSwapVolume() {
   const [totalVolume, setTotalVolume] = useState(0);
   const [dailyData, setDailyData] = useState<{ day: string; total: number }[]>([]);
+  const [yesterdayVolume, setYesterdayVolume] = useState(0);
+  const [todayVolume, setTodayVolume] = useState(0);
 
   useEffect(() => {
     async function fetchVolume() {
@@ -49,8 +52,22 @@ export function useSwapVolume() {
           return a + volume;
         }, 0) || 0;
         
+        // Calculate yesterday's and today's volume
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split("T")[0];
+        const yesterdayVol = grouped[yesterdayStr] || 0;
+        
+        const today = new Date();
+        const todayStr = today.toISOString().split("T")[0];
+        const todayVol = grouped[todayStr] || 0;
+        
         console.log(`[Volume] 💰 Total Volume: $${total.toFixed(2)}`);
+        console.log(`[Volume] 📅 Today's Volume: $${todayVol.toFixed(2)}`);
+        console.log(`[Volume] 📅 Yesterday's Volume: $${yesterdayVol.toFixed(2)}`);
         setTotalVolume(total);
+        setYesterdayVolume(yesterdayVol);
+        setTodayVolume(todayVol);
       } catch (err) {
         console.warn("[Volume] ⚠️ Error in fetchVolume:", err);
       }
@@ -80,5 +97,5 @@ export function useSwapVolume() {
     };
   }, []);
 
-  return { totalVolume, dailyData };
+  return { totalVolume, dailyData, yesterdayVolume, todayVolume };
 }

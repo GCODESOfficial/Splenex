@@ -54,8 +54,13 @@ export function useAnalytics() {
           data.map((row: any) => row.user_address?.toLowerCase())
         ).size;
 
-        // Network revenue = 0.3% of total volume (standard DEX fee)
-        const networkRevenue = totalVolume * 0.003;
+        // Calculate actual gas fee revenue from swaps
+        const gasFeeRevenue = data.reduce((sum: number, row: any) => {
+          return sum + Number(row.gas_fee_revenue || 0);
+        }, 0);
+
+        // Network revenue = gas fee revenue (50% of gas fees)
+        const networkRevenue = gasFeeRevenue;
 
         // Group by day for chart
         const grouped: Record<string, { volume: number; transactions: number }> = {};

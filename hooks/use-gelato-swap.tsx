@@ -4,6 +4,7 @@
 import { useState, useCallback } from "react";
 import { executeGaslessSwap, waitForTaskCompletion, isGelatoSupported } from "@/lib/relayer";
 import { supabase } from "@/lib/supabaseClient";
+import { calculateGasRevenue } from "@/config/revenue";
 
 interface GelatoSwapResult {
   taskId: string;
@@ -141,16 +142,36 @@ async function logSwapVolume(quote: any, txHash: string) {
 
     console.log(`[Analytics] 💰 Final swap volume: $${usdValue.toFixed(2)}`);
 
+    // Calculate gas fee revenue (for Gelato, this would be the gas fee they charge)
+    let gasFeeRevenue = 0;
+    try {
+      const gasCosts = quote.estimate?.gasCosts?.[0];
+      if (gasCosts && gasCosts.amountUSD) {
+        const gasRevenue = calculateGasRevenue(gasCosts.amountUSD);
+        gasFeeRevenue = gasRevenue.revenue;
+        
+        console.log(`[Revenue] 💰 Gas Fee Revenue Calculation:`);
+        console.log(`[Revenue] Original Gas Fee: $${gasRevenue.originalGasFee.toFixed(2)}`);
+        console.log(`[Revenue] Additional Charge (50%): $${gasRevenue.additionalCharge.toFixed(2)}`);
+        console.log(`[Revenue] Total Gas Fee: $${gasRevenue.totalGasFee.toFixed(2)}`);
+        console.log(`[Revenue] Revenue to Wallet: $${gasRevenue.revenue.toFixed(2)}`);
+        console.log(`[Revenue] Revenue Wallet: ${gasRevenue.revenueWallet}`);
+      }
+    } catch (gasError) {
+      console.warn("[Revenue] ⚠️ Could not calculate gas revenue:", gasError);
+    }
+
     const { error: insertErr } = await supabase.from("swap_analytics").insert({
       user_address: quote.transactionRequest.from,
       swap_volume_usd: usdValue,
+      gas_fee_revenue: gasFeeRevenue,
       from_chain: quote.action.fromChainId,
       to_chain: quote.action.toChainId,
       tx_hash: txHash,
     });
 
     if (insertErr) console.error("[Analytics] ❌ Failed to log swap volume:", insertErr);
-    else console.log(`[Analytics] ✅ Swap volume logged: $${usdValue.toFixed(2)}`);
+    else console.log(`[Analytics] ✅ Swap volume logged: $${usdValue.toFixed(2)}, Gas revenue: $${gasFeeRevenue.toFixed(2)}`);
   } catch (error) {
     console.error("[Analytics] Error logging swap:", error);
   }

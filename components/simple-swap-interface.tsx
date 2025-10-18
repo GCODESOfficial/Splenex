@@ -147,6 +147,10 @@ export function SimpleSwapInterface() {
   const [slippageTolerance, setSlippageTolerance] = useState(0.5);
   const [limitOrders, setLimitOrders] = useState<any[]>([]);
   const [ordersRefreshKey, setOrdersRefreshKey] = useState(0);
+  
+  // State for immediate validation and TO amount calculation
+  const [fromTokenError, setFromTokenError] = useState<string | null>(null);
+  const [estimatedToAmount, setEstimatedToAmount] = useState<string>("");
   const [isApeModeModalOpen, setIsApeModeModalOpen] = useState(false);
   const [apeModeConfig, setApeModeConfig] = useState<ApeModeConfig | null>(
     null
@@ -250,6 +254,12 @@ export function SimpleSwapInterface() {
           }));
         }
       }
+
+      // Check for any tokens with balances and show notification
+      const tokensWithBalance = tokenBalances.filter(t => parseFloat(t.balance) > 0);
+      if (tokensWithBalance.length > 0) {
+        console.log("[Swap] 🎉 Found tokens with balances:", tokensWithBalance);
+      }
     }
   }, [isConnected, tokenBalances, fromToken.symbol, fromToken.chainName, toToken.symbol, toToken.chainName, toToken.address]);
 
@@ -340,16 +350,19 @@ export function SimpleSwapInterface() {
       };
     }
 
+    // Very permissive minimum amounts - allow any token to be swapped with any amount
     const minimumAmounts: { [key: string]: number } = {
-      ETH: 0.001,
-      USDC: 1,
-      USDT: 1,
-      DAI: 1,
-      BNB: 0.001,
-      MATIC: 1,
+      ETH: 0.000001,
+      USDC: 0.000001,
+      USDT: 0.000001,
+      DAI: 0.000001,
+      BNB: 0.000001,
+      MATIC: 0.000001,
+      SOL: 0.000001,
+      ATOM: 0.000001,
     };
 
-    const minAmount = minimumAmounts[token.symbol] || 1;
+    const minAmount = minimumAmounts[token.symbol] || 0.000001; // Default to very low minimum
     if (numAmount < minAmount) {
       return {
         isValid: false,
@@ -766,7 +779,7 @@ export function SimpleSwapInterface() {
       }
 
       // Last resort: Try direct DEX router as final fallback
-      if (!lifiQuote && fromChain === toChain) {
+      if (!lifiQuote) {
         console.log("[v0] 🔧 All aggregators failed. Trying direct DEX router as last resort...");
         
         try {
@@ -829,14 +842,6 @@ export function SimpleSwapInterface() {
         // Check if this is a low-cap token issue
         const isLowCapToken = toToken.symbol === "TWC" || fromToken.symbol === "TWC";
         
-        toast({
-          title: "No Routes Available",
-          description: isLowCapToken 
-            ? `${toToken.symbol || fromToken.symbol} is a very low-cap token with extremely low liquidity. Even direct DEX routers couldn't find a route. Check if the token exists on this chain and has any liquidity pools.`
-            : "None of our 5 aggregators AND direct DEX routers could find a route. Token may have zero liquidity, transfer restrictions, or only exists on other chains.",
-          variant: "destructive",
-          duration: 7000,
-        });
         
         // Log helpful info for low-cap tokens
         if (isLowCapToken) {
@@ -1441,7 +1446,7 @@ export function SimpleSwapInterface() {
         setFromAmount(amount.toString());
       } else {
         const minimumAmounts: { [key: string]: number } = {
-          ETH: 0.001,
+          ETH: 0.00001,
           USDC: 1,
           USDT: 1,
           DAI: 1,
@@ -1620,20 +1625,75 @@ export function SimpleSwapInterface() {
   const isBridge = fromToken.chainId !== toToken.chainId;
   const buttonText = !isConnected ? "Connect" : isBridge ? "Swap" : "Swap";
 
+  // Immediate validation and TO amount calculation (before quote fetching)
+  useEffect(() => {
+    if (fromAmount && Number.parseFloat(fromAmount) > 0) {
+      // Validate FROM token immediately
+      const validation = validateSwapAmount(fromAmount, fromToken);
+      if (!validation.isValid) {
+        setFromTokenError(validation.error || "Invalid amount");
+      } else {
+        // Clear error if validation passes
+        setFromTokenError(null);
+      }
+      
+      // Always calculate estimated TO amount regardless of validation errors
+      const calculateEstimatedToAmount = async () => {
+        try {
+          // For same token transfers, show 1:1 ratio immediately
+          const isSameTokenTransfer = (
+            fromToken.address.toLowerCase() === toToken.address.toLowerCase() ||
+            fromToken.symbol === toToken.symbol
+          ) && (
+            fromToken.chainId === toToken.chainId
+          );
+
+          if (isSameTokenTransfer) {
+            setEstimatedToAmount(fromAmount);
+            return;
+          }
+
+          // For different tokens, try to get rough estimate from price API
+          if (fromToken.symbol && toToken.symbol) {
+            const priceResponse = await fetch(`/api/prices?symbols=${fromToken.symbol},${toToken.symbol}`);
+            if (priceResponse.ok) {
+              const prices = await priceResponse.json();
+              const fromPrice = prices[fromToken.symbol] || 0;
+              const toPrice = prices[toToken.symbol] || 0;
+              
+              if (fromPrice > 0 && toPrice > 0) {
+                const fromAmountNum = Number.parseFloat(fromAmount);
+                const estimatedAmount = (fromAmountNum * fromPrice) / toPrice;
+                setEstimatedToAmount(estimatedAmount.toFixed(6));
+              } else {
+                setEstimatedToAmount("~");
+              }
+            } else {
+              setEstimatedToAmount("~");
+            }
+          }
+        } catch (error) {
+          console.log("[Validation] Could not calculate estimated amount:", error);
+          setEstimatedToAmount("~");
+        }
+      };
+
+      calculateEstimatedToAmount();
+    } else {
+      setFromTokenError(null);
+      setEstimatedToAmount("");
+    }
+  }, [fromAmount, fromToken, toToken]);
+
   useEffect(() => {
     const fetchQuote = async () => {
       if (
         fromAmount &&
         Number.parseFloat(fromAmount) > 0 &&
         fromWalletAddress &&
-        toWalletAddress
+        toWalletAddress &&
+        !fromTokenError // Only fetch quote if no validation errors
       ) {
-        const validation = validateSwapAmount(fromAmount, fromToken);
-        if (!validation.isValid) {
-          console.log("[v0] Skipping quote fetch:", validation.error);
-          setToAmount("");
-          return;
-        }
 
         // ✅ Skip quote for same-token wallet-to-wallet transfers
         const isSameTokenTransfer = (
@@ -1720,6 +1780,7 @@ export function SimpleSwapInterface() {
     getQuote,
     isBridge,
     slippageTolerance,
+    fromTokenError, // Include validation error in dependencies
   ]);
 
   // --- layout blocks kept intact; we only wrap them when chart is docked ---
@@ -2024,6 +2085,20 @@ export function SimpleSwapInterface() {
                         )}
                       </Button>
                     </div>
+                    
+                    {/* Show FROM token validation errors in TO section */}
+                    {fromTokenError && (
+                      <div className="text-red-400 text-xs mt-1 px-4 pb-2">
+                        {fromTokenError}
+                      </div>
+                    )}
+                    
+                    {/* Show estimated amount indicator */}
+                    {estimatedToAmount && !toAmount && (
+                      <div className="text-yellow-400 text-xs mt-1 px-4 pb-2">
+                        ~{estimatedToAmount} (estimated)
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -2213,9 +2288,10 @@ export function SimpleSwapInterface() {
                       <Input
                         type="number"
                         placeholder="0"
-                        value={toAmount}
+                        value={toAmount || estimatedToAmount}
                         onChange={(e) => setToAmount(e.target.value)}
                         className="bg-transparent border-none text-3xl font-medium text-white p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        disabled={!!fromTokenError} // Disable if there's a FROM token error
                       />
                       <Button
                         variant="ghost"

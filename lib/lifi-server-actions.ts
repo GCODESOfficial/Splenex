@@ -69,7 +69,7 @@ export async function getLiFiQuote(request: LiFiQuoteRequest) {
     console.log("[v0] Server: Full LiFi API URL:", `${LIFI_API_BASE}/quote?${params.toString()}`)
 
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000) // Reduced timeout to 15s
+    const timeoutId = setTimeout(() => controller.abort(), 8000) // Faster timeout: 8s
 
     const response = await fetch(`${LIFI_API_BASE}/quote?${params}`, {
       method: "GET",
